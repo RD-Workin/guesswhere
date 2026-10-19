@@ -20,6 +20,15 @@ page.on('console', (m) => m.type() === 'error' && problems.push(m.text()));
 page.on('pageerror', (e) => problems.push(String(e)));
 const archive = [];
 page.on('request', (r) => r.url().includes('monde.pmtiles') && archive.push(r.headers().range ?? 'entier'));
+// Pendant une manche et sa révélation, aucune requête réseau, même vers notre
+// propre origine : seules comptent celles que le service worker ne sert pas.
+let watching = false;
+const network = [];
+page.on('requestfinished', async (r) => {
+  if (!watching || /^(blob|data):/.test(r.url())) return;
+  if (!(await r.response())?.fromServiceWorker()) network.push(r.url());
+});
+page.on('requestfailed', (r) => watching && !/^(blob|data):/.test(r.url()) && network.push(r.url()));
 
 try {
   await page.goto('http://localhost:4193/');
@@ -36,6 +45,9 @@ try {
   assert.deepEqual(archive, ['entier'], 'archive téléchargée en entier, une seule fois');
 
   await page.getByRole('button', { name: 'Retour' }).click();
+  // En mode avion, une fois la vue satellite installée.
+  await ctx.setOffline(true);
+  watching = true;
   await page.getByRole('button', { name: 'Jouer', exact: true }).click();
   await page.locator('#manches').fill('1');
   await page.getByText('Commencer').click();
@@ -47,6 +59,10 @@ try {
   await page.locator('.carte').click({ position: { x: 150, y: 120 } });
   await page.getByRole('button', { name: 'Valider' }).click();
   await page.locator('.resultats').waitFor();
+  await page.waitForTimeout(1000); // la révélation zoome sur la réponse
+  watching = false;
+  assert.deepEqual(network, [], 'requêtes réseau pendant la manche : ' + network.join(', '));
+  await ctx.setOffline(false);
   page.once('dialog', (d) => d.accept());
   await page.getByRole('button', { name: 'Quitter la partie' }).click().catch(() => {});
 

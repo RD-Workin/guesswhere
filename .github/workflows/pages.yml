@@ -48,7 +48,9 @@ jobs:
           ln -sf "$(go env GOPATH)/bin/go-pmtiles" "$(go env GOPATH)/bin/pmtiles"
           export PATH="$(go env GOPATH)/bin:$PATH"
           pip install --quiet pillow==12.3.0
-          python3 scripts/satellite.py .satellite-cache dist/carte 7 || python3 scripts/satellite.py .satellite-cache dist/carte 6
+          python3 scripts/satellite.py .satellite-cache dist/carte 7 \
+            || python3 scripts/satellite.py .satellite-cache dist/carte 6 \
+            || python3 scripts/satellite.py .satellite-cache dist/carte 5
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
