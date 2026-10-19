@@ -70,6 +70,8 @@ try {
   await page.locator('#manches').fill('1');
   await page.locator('#duel').check();
   await page.getByText('Commencer').click();
+  // Premier duel : conseil Accès guidé, montré une seule fois.
+  await page.getByText('Compris, on joue').click();
   await playRound('Joueur 1 · Manche 1/1', 100, 100);
   await page.getByText('C’est moi, je joue').click();
   await playRound('Joueur 2 · Manche 1/1', 200, 150);
