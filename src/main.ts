@@ -8,6 +8,7 @@ import { MAX_SCORE } from './score';
 import { newShareCode, packGame, unpackGame, MAX_SHARED_PHOTOS, SHARE_FILE_NAME, SHARE_TTL_MS } from './share';
 import * as satellite from './satellite';
 import { groupIntoTrips } from './trips';
+import { checkTest, cleanTest, startTest, testPending } from './cryptotest';
 import { acceptUpdate, CHANGES_URL, installedVersion, onUpdateWaiting, registerServiceWorker, updateWaiting } from './update';
 import { h, nf, plural, screen } from './ui';
 
@@ -459,6 +460,7 @@ async function settings() {
     version,
     h('div', { class: 'actions' },
       h('button', { onclick: () => gpsTest() }, 'Tester la lecture GPS'),
+      h('button', { onclick: () => cryptoTest() }, 'Tester le chiffrement'),
       h('button', { class: 'danger', onclick: () => confirmWipe(photos.length, tripsOf(photos).length) }, 'Tout supprimer'),
       h('button', { onclick: () => home() }, 'Retour'),
     ),
@@ -577,6 +579,45 @@ function gpsTest() {
     h('div', { class: 'actions' }, h('label', { class: 'bouton principal' }, 'Choisir des photos', input)),
     out,
     h('div', { class: 'actions' }, h('button', { onclick: () => settings() }, 'Retour')),
+  );
+}
+
+/** Test du chiffrement local sur ce téléphone, avec des données fictives (securite-rgpd.md §19). */
+async function cryptoTest() {
+  const back = h('button', { onclick: () => settings() }, 'Retour');
+  const clean = h('button', { onclick: async () => { await cleanTest(); cryptoTest(); } }, 'Nettoyer le test');
+  const intro = h('p', {}, 'Ce test utilise des images fictives, pas tes photos. Il vérifie que ton iPhone garde une clé de chiffrement secrète après la fermeture de l’app.');
+  if (!(await testPending())) {
+    const status = h('p', { role: 'status' });
+    const go = h('button', { class: 'principal', onclick: async () => {
+      go.disabled = true;
+      status.textContent = 'Chiffrement en cours…';
+      try {
+        await startTest();
+        status.textContent = 'Étape 1 réussie. Ferme l’app depuis le sélecteur d’apps (glisse-la vers le haut), puis rouvre-la et reviens ici.';
+      } catch (e) {
+        status.textContent = `Échec de l’étape 1 : ${(e as Error).message}`;
+      }
+    } }, 'Lancer le test');
+    return screen(h('h2', {}, 'Tester le chiffrement'), intro, h('div', { class: 'actions' }, go), status, h('div', { class: 'actions' }, back));
+  }
+  let lines: string[];
+  try {
+    const r = await checkTest();
+    const ok = r.decrypted && !r.extractable && r.ms < 200;
+    lines = [
+      ok ? 'Test réussi : le chiffrement peut être activé sur ce téléphone.' : 'Test échoué : envoie une capture de cet écran.',
+      `Images déchiffrées après réouverture : ${r.decrypted ? 'oui' : 'non'}`,
+      `Clé impossible à extraire : ${r.extractable ? 'non' : 'oui'}`,
+      `Temps pour 15 images : ${nf(r.ms)} ms (objectif : moins de 200 ms)`,
+    ];
+  } catch (e) {
+    lines = ['Test échoué : envoie une capture de cet écran.', (e as Error).message];
+  }
+  screen(
+    h('h2', {}, 'Tester le chiffrement'),
+    h('section', { class: 'bandeau', role: 'status' }, ...lines.map((l) => h('p', {}, l))),
+    h('div', { class: 'actions' }, clean, back),
   );
 }
 
