@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { distanceKm, formatDistance } from '../src/geo';
 import { roundScore, MAX_SCORE } from '../src/score';
-import { startFrame } from '../src/framing';
 import { groupIntoTrips } from '../src/trips';
 import { advance, newGame, roundComplete, submitGuess, totals } from '../src/game';
 import { countryAt } from '../src/countries';
@@ -40,19 +39,6 @@ describe('score logarithmique (C4, grille de bugs.md)', () => {
     }
     expect(roundScore(NaN)).toBe(0);
     expect(roundScore(-1)).toBe(0);
-  });
-});
-
-describe('cadrage de départ', () => {
-  it('ignore la photo isolée et reste fixe', () => {
-    const tokyo = Array.from({ length: 9 }, (_, i) => ({ lat: 35.65 + i * 0.01, lng: 139.7 + i * 0.01 }));
-    const f = startFrame([...tokyo, { lat: 48.85, lng: 2.35 }]);
-    expect(f.west).toBeGreaterThan(139);
-    expect(f.east).toBeLessThan(141);
-  });
-  it("traverse l'antiméridien", () => {
-    const f = startFrame([{ lat: -17.7, lng: 178 }, { lat: -13.8, lng: -172 }, { lat: -18, lng: 179 }]);
-    expect(f.east - f.west).toBeLessThan(30);
   });
 });
 

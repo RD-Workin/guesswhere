@@ -26,6 +26,31 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # Vue satellite mondiale (NASA Blue Marble, domaine public), la même pour
+      # tout le monde. Les tuiles d'origine sont gardées en cache d'Actions pour
+      # ne pas les retélécharger à chaque publication. En cas d'échec, le site
+      # est publié sans elle : l'app garde sa carte dessinée.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/cache@v4
+        with:
+          path: .satellite-cache
+          key: satellite-bluemarble-v1
+      - name: Vue satellite
+        continue-on-error: true
+        run: |
+          go install github.com/protomaps/go-pmtiles@v1.31.2
+          ln -sf "$(go env GOPATH)/bin/go-pmtiles" "$(go env GOPATH)/bin/pmtiles"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          pip install --quiet pillow==12.3.0
+          python3 scripts/satellite.py .satellite-cache dist/carte 7 \
+            || python3 scripts/satellite.py .satellite-cache dist/carte 6 \
+            || python3 scripts/satellite.py .satellite-cache dist/carte 5
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

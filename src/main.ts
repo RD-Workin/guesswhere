@@ -2,10 +2,11 @@ import './style.css';
 import { addPhoto, allPhotos, deleteReceivedGame, purgeExpiredReceived, receivedGames, requestPersistence, saveReceivedGame, wipeEverything, type ReceivedGame } from './db';
 import { advance, currentPhoto, newGame, submitGuess, totals, DEFAULT_ROUNDS, type Game } from './game';
 import { formatDistance, type LatLng } from './geo';
-import { GameMap } from './map';
+import { GameMap, resetSatellite } from './map';
 import { importFile, readExif, type Photo } from './photos';
 import { MAX_SCORE } from './score';
 import { newShareCode, packGame, unpackGame, MAX_SHARED_PHOTOS, SHARE_FILE_NAME, SHARE_TTL_MS } from './share';
+import * as satellite from './satellite';
 import { groupIntoTrips } from './trips';
 import { h, nf, plural, screen } from './ui';
 
@@ -217,7 +218,7 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     pending = undefined;
     map.clearReveal();
     map.setMarkers([]);
-    map.frame(game.frame);
+    map.resetView();
     const who = game.players.length > 1 ? `${game.players[game.player]} · ` : '';
     const validate = h('button', { class: 'principal', hidden: true, onclick: () => pending && reveal(pending) }, 'Valider');
     const hint = h('span', { class: 'consigne' }, 'Touche la carte pour placer ton repère');
@@ -430,12 +431,62 @@ async function settings() {
         h('li', {}, 'Tout reste dans l’app, sur ce téléphone. Rien n’est envoyé, la carte elle-même est embarquée.'),
       ),
     ),
+    satelliteSection(),
     h('div', { class: 'actions' },
       h('button', { onclick: () => gpsTest() }, 'Tester la lecture GPS'),
       h('button', { class: 'danger', onclick: () => confirmWipe(photos.length, tripsOf(photos).length) }, 'Tout supprimer'),
       h('button', { onclick: () => home() }, 'Retour'),
     ),
   );
+}
+
+const mo = (octets: number) => `${nf(Math.round(octets / 1e6))} Mo`;
+
+/**
+ * Téléchargement de la vue satellite : un seul fichier, le même pour tous,
+ * donc rien ne trahit les lieux des photos. Proposé, jamais imposé, à cause de sa taille.
+ */
+function satelliteSection(): HTMLElement {
+  const status = h('p', {}, 'Recherche de la vue satellite…');
+  const buttons = h('div', { class: 'actions' });
+  const section = h('section', { class: 'texte' },
+    h('h3', {}, 'Vue satellite'),
+    h('p', {}, 'Images de la Terre vue de l’espace (NASA), nettes à l’échelle des pays et des îles, floues à l’échelle d’une ville. Un seul fichier, le même pour tout le monde : il ne révèle aucun lieu, et il marche ensuite en mode avion.'),
+    status, buttons,
+  );
+
+  const refresh = async () => {
+    const [info, installed] = await Promise.all([satellite.publishedInfo(), satellite.installedVersion()]);
+    buttons.replaceChildren();
+    const get = (label: string) => h('button', {
+      onclick: async () => {
+        buttons.replaceChildren();
+        status.textContent = 'Téléchargement… 0 %';
+        try {
+          await satellite.download(info!, (f) => { status.textContent = `Téléchargement… ${Math.floor(f * 100)} %`; });
+          await requestPersistence();
+        } catch {
+          status.textContent = 'Le téléchargement n’a pas abouti. Vérifie la connexion, puis réessaie.';
+        }
+        resetSatellite();
+        refresh();
+      },
+    }, label);
+    if (installed) {
+      status.textContent = 'Vue satellite installée sur ce téléphone.';
+      if (info && info.version !== installed) buttons.append(get(`Mettre à jour (${mo(info.octets)})`));
+      buttons.append(h('button', {
+        onclick: async () => { await satellite.remove(); resetSatellite(); refresh(); },
+      }, 'Retirer la vue satellite'));
+    } else if (info) {
+      status.textContent = `${mo(info.octets)} à télécharger, de préférence en Wi-Fi.`;
+      buttons.append(get('Télécharger la vue satellite'));
+    } else {
+      status.textContent = 'Pas disponible pour l’instant (connexion nécessaire).';
+    }
+  };
+  refresh();
+  return section;
 }
 
 function confirmWipe(count: number, trips: number) {
@@ -448,6 +499,7 @@ function confirmWipe(count: number, trips: number) {
     }
     photoUrls.forEach((u) => URL.revokeObjectURL(u));
     photoUrls.clear();
+    resetSatellite();
     home(`Tout a été supprimé (${plural(count, 'photo', 'photos')}, ${plural(trips, 'voyage', 'voyages')}).`);
   };
   // Appui long de 2 s au doigt…
