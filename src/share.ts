@@ -7,9 +7,13 @@
  * La clé (128 bits aléatoires, dérivée en clé AES de 256 bits par HKDF) n'est
  * jamais dans le fichier : elle est transmise par un autre canal, sous forme
  * de 26 caractères. Les images sont celles déjà nettoyées à l'import (D4).
+ * L'en-tête ne contient que ce dont le jeu a besoin : ni nom de voyage, ni
+ * date de prise de vue, qui donneraient un indice à l'ami.
  */
 
 const MAGIC = 'GWH1';
+/** Nom neutre : il s'affiche en clair dans Messages et AirDrop (ni voyage, ni date). */
+export const SHARE_FILE_NAME = 'partie.guesswhere';
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans I, O, 0, 1 : pas de confusion à la lecture
 
 export interface SharedRound {
