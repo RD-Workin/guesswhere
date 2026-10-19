@@ -10,6 +10,8 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const { defaultBrowserType, ...iphone } = devices['iPhone 13'];
 const ctx = await browser.newContext({ ...iphone, isMobile: false });
 const page = await ctx.newPage();
+// Simule l'app installée sur l'écran d'accueil (l'import y est réservé).
+await ctx.addInitScript(() => Object.defineProperty(navigator, 'standalone', { get: () => !sessionStorage.getItem('onglet') }));
 const problems = [];
 page.on('console', (m) => m.type() === 'error' && problems.push(m.text()));
 page.on('pageerror', (e) => problems.push(String(e)));
@@ -17,7 +19,14 @@ const thirdParty = [];
 page.on('request', (r) => !r.url().startsWith('http://localhost:4191') && !r.url().startsWith('blob:') && !r.url().startsWith('data:') && thirdParty.push(r.url()));
 
 try {
+  // Dans un simple onglet Safari : pas d'import, tutoriel d'installation.
   await page.goto('http://localhost:4191/');
+  await page.evaluate(() => sessionStorage.setItem('onglet', '1'));
+  await page.reload();
+  await page.getByText('Installe d’abord GuessWhere').waitFor();
+  assert.equal(await page.locator('input[type=file]').count(), 0);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload();
   await page.getByText('Aucune photo').waitFor();
   await page.locator('input[type=file]').setInputFiles(['tokyo', 'rio', 'sans-gps', 'zero'].map((f) => `test/fixtures/${f}.jpg`));
   await page.getByText('Import terminé').waitFor();
@@ -60,8 +69,18 @@ try {
   await page.getByText('Fin de partie').waitFor();
   await page.screenshot({ path: 'test/out-fin.png' });
 
+  // Paysage : photo et carte côte à côte.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.getByText('Rejouer').click();
+  await page.getByText('Manche 1/2').waitFor();
+  const [photoBox, mapBox] = [await page.locator('.cadre-photo').boundingBox(), await page.locator('.carte').boundingBox()];
+  assert.ok(mapBox.x >= photoBox.x + photoBox.width - 1, 'paysage : carte à droite de la photo');
+  await page.screenshot({ path: 'test/out-paysage.png' });
+  await page.setViewportSize({ width: 390, height: 664 });
+  await page.getByRole('button', { name: 'Quitter la partie' }).click();
+  await page.getByRole('button', { name: 'Jouer' }).waitFor();
+
   // Duel : écran de passage entre les joueurs.
-  await page.getByText('Accueil').click();
   await page.getByRole('button', { name: 'Jouer' }).click();
   await page.locator('#manches').fill('1');
   await page.locator('#duel').check();

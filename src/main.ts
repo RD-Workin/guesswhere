@@ -14,6 +14,13 @@ const ANSWER_COLOR = '#30D158';
 const isInstalled = () =>
   matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
+/**
+ * Sur iOS, l'app installée et l'onglet Safari ont deux stockages séparés :
+ * des photos importées dans Safari n'apparaîtraient pas dans l'app installée
+ * (décision C11). L'import n'est donc possible que dans l'app installée.
+ */
+const canImport = () => isInstalled() || import.meta.env.DEV;
+
 const photoUrls = new Map<string, string>();
 function urlFor(p: Photo): string {
   let u = photoUrls.get(p.id);
@@ -53,14 +60,21 @@ async function home(message?: string) {
   screen(
     h('header', { class: 'titre' }, h('h1', {}, 'GuessWhere'), h('p', { class: 'badge' }, 'Sur ton iPhone uniquement')),
     message && h('p', { class: 'info', role: 'status' }, message),
-    !isInstalled() && h('p', { class: 'bandeau' },
-      'Ajoute GuessWhere à l’écran d’accueil (bouton Partager, puis « Sur l’écran d’accueil ») : sinon Safari peut effacer tes photos après 7 jours sans visite.'),
+    !canImport() && h('section', { class: 'bandeau' },
+      h('p', {}, h('strong', {}, 'Installe d’abord GuessWhere sur ton écran d’accueil.')),
+      h('ol', {},
+        h('li', {}, 'Touche le bouton Partager de Safari (le carré avec une flèche).'),
+        h('li', {}, 'Choisis « Sur l’écran d’accueil », puis « Ajouter ».'),
+        h('li', {}, 'Ouvre GuessWhere depuis sa nouvelle icône et importe tes photos.'),
+      ),
+      h('p', {}, 'Tes photos sont gardées seulement sur cet iPhone, dans l’app installée. Dans un simple onglet, Safari pourrait les effacer.'),
+    ),
     h('p', {}, photos.length
       ? `${plural(photos.length, 'photo', 'photos')} prête${photos.length > 1 ? 's' : ''} à jouer.`
       : 'Aucune photo pour l’instant. Importe des photos de voyage : seules leur position et leur date sont lues, ici même.'),
     h('div', { class: 'actions' },
       photos.length > 0 && h('button', { class: 'principal', onclick: () => setup(photos) }, 'Jouer'),
-      importButton(),
+      canImport() && importButton(),
       photos.length > 0 && h('button', { onclick: () => library(photos) }, 'Mes voyages'),
       h('button', { class: 'discret', onclick: () => settings() }, 'Réglages et confidentialité'),
     ),
@@ -170,7 +184,7 @@ function play(game: Game, pool: Photo[]) {
     pending = undefined;
     map.clearReveal();
     map.setMarkers([]);
-    map.frame(pool);
+    map.frame(game.frame);
     const who = game.players.length > 1 ? `${game.players[game.player]} · ` : '';
     const validate = h('button', { class: 'principal', hidden: true, onclick: () => pending && reveal(pending) }, 'Valider');
     bar.replaceChildren(

@@ -1,28 +1,20 @@
-import { spreadKm, type LatLng } from './geo';
-
 export const MAX_SCORE = 5000;
-/** Échelle minimale : une partie dans un seul quartier reste jouable. */
-export const MIN_SCALE_KM = 2;
-/** Échelle maximale : la moitié de la circonférence terrestre. */
-export const MAX_SCALE_KM = 20000;
+/** En dessous de 100 m (précision du GPS), la réponse est parfaite. */
+export const PERFECT_KM = 0.1;
+/** Au-delà de 20 000 km (antipodes), la réponse vaut 0. */
+export const ZERO_KM = 20000;
 
 /**
- * Échelle d'une partie, calculée à partir de l'étendue de ses photos.
- * C'est elle qui rend le score pertinent à l'échelle d'une ville comme
- * entre deux continents : se tromper de 1 km compte beaucoup dans Paris
- * et presque rien dans un tour du monde.
+ * Score d'une manche, logarithmique (décision C4 / bug B1) :
+ * chaque facteur 10 sur la distance coûte environ 943 points, quelle que soit
+ * l'échelle. Se tromper de 1 km au lieu de 100 m pèse autant que 1 000 km au
+ * lieu de 100 km : le jeu marche dans une ville comme entre deux continents,
+ * sans dépendre des autres photos de la partie.
+ *
+ * 100 m = 5000 · 1 km = 4057 · 10 km = 3114 · 344 km = 1664 · 5 837 km = 504 · antipodes = 0
  */
-export function gameScaleKm(points: LatLng[]): number {
-  return Math.min(MAX_SCALE_KM, Math.max(MIN_SCALE_KM, spreadKm(points)));
-}
-
-/**
- * Score d'une manche, décroissance exponentielle façon GeoGuessr :
- * 5000 points à distance nulle, ~1840 à 10 % de l'échelle, ~0 au-delà de 60 %.
- * Une erreur inférieure à 0,5 % de l'échelle donne le score parfait.
- */
-export function roundScore(distanceKm: number, scaleKm: number): number {
+export function roundScore(distanceKm: number): number {
   if (!Number.isFinite(distanceKm) || distanceKm < 0) return 0;
-  if (distanceKm <= scaleKm * 0.005) return MAX_SCORE;
-  return Math.round(MAX_SCORE * Math.exp((-10 * distanceKm) / scaleKm));
+  const ratio = Math.log10(Math.max(distanceKm, PERFECT_KM) / PERFECT_KM) / Math.log10(ZERO_KM / PERFECT_KM);
+  return Math.round(MAX_SCORE * Math.min(1, Math.max(0, 1 - ratio)));
 }

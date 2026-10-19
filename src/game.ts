@@ -1,5 +1,6 @@
 import { distanceKm, type LatLng } from './geo';
-import { gameScaleKm, roundScore } from './score';
+import { startFrame, type Bounds } from './framing';
+import { roundScore } from './score';
 
 export interface GamePhoto extends LatLng {
   id: string;
@@ -13,7 +14,8 @@ export interface Guess extends LatLng {
 export interface Game {
   players: string[];
   rounds: GamePhoto[];
-  scaleKm: number;
+  /** Cadrage de départ, identique pour toutes les manches. */
+  frame: Bounds;
   /** guesses[manche][joueur] */
   guesses: (Guess | undefined)[][];
   round: number;
@@ -32,9 +34,8 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 /**
- * Prépare une partie. L'échelle de score vient de toute la sélection (voyage,
- * pays ou tout), pas seulement des photos tirées : une partie « Paris » reste
- * notée à l'échelle de Paris même si les 5 photos tirées sont proches.
+ * Prépare une partie. Le cadrage de départ vient de toute la sélection
+ * (voyage, pays ou tout), pas des seules photos tirées, pour ne rien révéler.
  */
 export function newGame(pool: GamePhoto[], players: string[], rounds = DEFAULT_ROUNDS): Game {
   if (!pool.length) throw new Error('Aucune photo à jouer');
@@ -43,7 +44,7 @@ export function newGame(pool: GamePhoto[], players: string[], rounds = DEFAULT_R
   return {
     players,
     rounds: picked,
-    scaleKm: gameScaleKm(pool),
+    frame: startFrame(pool),
     guesses: picked.map(() => players.map(() => undefined)),
     round: 0,
     player: 0,
@@ -58,7 +59,7 @@ export function currentPhoto(game: Game): GamePhoto {
 export function submitGuess(game: Game, at: LatLng): Guess {
   const answer = currentPhoto(game);
   const d = distanceKm(at, answer);
-  const guess: Guess = { lat: at.lat, lng: at.lng, distanceKm: d, score: roundScore(d, game.scaleKm) };
+  const guess: Guess = { lat: at.lat, lng: at.lng, distanceKm: d, score: roundScore(d) };
   game.guesses[game.round][game.player] = guess;
   return guess;
 }

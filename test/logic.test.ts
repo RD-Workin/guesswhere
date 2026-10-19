@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { distanceKm, formatDistance } from '../src/geo';
-import { gameScaleKm, roundScore, MAX_SCORE, MIN_SCALE_KM } from '../src/score';
+import { roundScore, MAX_SCORE } from '../src/score';
+import { startFrame } from '../src/framing';
 import { groupIntoTrips } from '../src/trips';
 import { advance, newGame, roundComplete, submitGuess, totals } from '../src/game';
 import { countryAt } from '../src/countries';
@@ -23,26 +24,36 @@ describe('distance (grille du fil « Chasse aux bugs »)', () => {
   });
 });
 
-describe('score', () => {
+describe('score logarithmique (C4, grille de bugs.md)', () => {
+  it('valeurs de référence', () => {
+    const grid: [number, number][] = [[0, 5000], [0.1, 5000], [1, 4057], [5, 3398], [10, 3114], [100, 2170], [344, 1664], [1000, 1227], [5837, 504], [20015, 0]];
+    for (const [d, pts] of grid) expect(roundScore(d), `${d} km`).toBe(pts);
+  });
   it('borné, monotone, sans NaN', () => {
     let prev = Infinity;
-    for (let d = 0; d <= 20100; d += 37) {
-      const s = roundScore(d, 20000);
+    for (let d = 0; d <= 20100; d += 10) {
+      const s = roundScore(d);
       expect(s).toBeGreaterThanOrEqual(0);
       expect(s).toBeLessThanOrEqual(MAX_SCORE);
       expect(s).toBeLessThanOrEqual(prev);
       prev = s;
     }
-    expect(roundScore(NaN, 10)).toBe(0);
+    expect(roundScore(NaN)).toBe(0);
+    expect(roundScore(-1)).toBe(0);
   });
-  it("s'adapte à l'échelle de la partie", () => {
-    const paris = 15, monde = 18000;
-    expect(roundScore(5, paris)).toBeLessThan(200); // 5 km d'erreur dans Paris : presque rien
-    expect(roundScore(5, monde)).toBe(MAX_SCORE); // 5 km sur un tour du monde : parfait
-    expect(roundScore(1, paris)).toBeGreaterThan(2000);
-    expect(roundScore(1000, monde)).toBeGreaterThan(2500);
+});
+
+describe('cadrage de départ', () => {
+  it('ignore la photo isolée et reste fixe', () => {
+    const tokyo = Array.from({ length: 9 }, (_, i) => ({ lat: 35.65 + i * 0.01, lng: 139.7 + i * 0.01 }));
+    const f = startFrame([...tokyo, { lat: 48.85, lng: 2.35 }]);
+    expect(f.west).toBeGreaterThan(139);
+    expect(f.east).toBeLessThan(141);
   });
-  it('échelle plancher pour une seule photo', () => expect(gameScaleKm([{ lat: 1, lng: 1 }])).toBe(MIN_SCALE_KM));
+  it("traverse l'antiméridien", () => {
+    const f = startFrame([{ lat: -17.7, lng: 178 }, { lat: -13.8, lng: -172 }, { lat: -18, lng: 179 }]);
+    expect(f.east - f.west).toBeLessThan(30);
+  });
 });
 
 describe('voyages', () => {
@@ -77,7 +88,7 @@ describe('partie', () => {
     advance(g);
     submitGuess(g, g.rounds[1]);
     expect(advance(g)).toBe(false);
-    expect(totals(g)).toEqual([2 * MAX_SCORE, MAX_SCORE]);
+    expect(totals(g)).toEqual([2 * MAX_SCORE, MAX_SCORE + roundScore(distanceKm({ lat: 0, lng: 0 }, g.rounds[0]))]);
   });
   it('pas plus de manches que de photos', () => expect(newGame(pool, ['A'], 10).rounds).toHaveLength(3));
 });

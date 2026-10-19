@@ -80,4 +80,12 @@ progress { width: 100%; height: 8px; }
   display: flex; flex-direction: column; justify-content: center; gap: 24px; padding: 32px;
   font-size: 24px; text-align: center;
 }
+/* Paysage (décision C13) : photo à gauche, carte à droite. */
+@media (orientation: landscape) {
+  .ecran.jeu { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto; }
+  .cadre-photo { padding-top: 0; padding-left: env(safe-area-inset-left); }
+  .barre { grid-column: 1 / -1; }
+}
+.bandeau ol { padding-left: 20px; margin: 8px 0; }
+.bandeau p { margin: 4px 0; }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: 0s !important; transition: none !important; } }

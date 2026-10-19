@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // Le worker de MapLibre est servi comme fichier de l'app (même origine, compatible CSP).
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { worldGeoJson } from './countries';
+import type { Bounds } from './framing';
 import type { LatLng } from './geo';
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -63,17 +64,9 @@ export class GameMap {
     this.onTap = fn;
   }
 
-  /** Cadre la carte sur l'étendue de la sélection, avec 30 % de marge. */
-  frame(points: LatLng[]) {
-    if (!points.length) return;
-    const lats = points.map((p) => p.lat);
-    const lngs = points.map((p) => p.lng);
-    let [s, n, w, e] = [Math.min(...lats), Math.max(...lats), Math.min(...lngs), Math.max(...lngs)];
-    const mLat = Math.max((n - s) * 0.3, 0.02);
-    const mLng = Math.max((e - w) * 0.3, 0.02);
-    s = Math.max(-85, s - mLat); n = Math.min(85, n + mLat);
-    w = Math.max(-180, w - mLng); e = Math.min(180, e + mLng);
-    this.map.fitBounds([[w, s], [e, n]] as LngLatBoundsLike, { animate: false, padding: 8 });
+  /** Cadre la carte sur la zone de départ de la partie. */
+  frame(b: Bounds) {
+    this.map.fitBounds([[b.west, b.south], [b.east, b.north]] as LngLatBoundsLike, { animate: false, padding: 8 });
   }
 
   setMarkers(specs: MarkerSpec[]) {
