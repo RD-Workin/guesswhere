@@ -217,7 +217,7 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     pending = undefined;
     map.clearReveal();
     map.setMarkers([]);
-    map.frame(game.frame);
+    map.resetView();
     const who = game.players.length > 1 ? `${game.players[game.player]} · ` : '';
     const validate = h('button', { class: 'principal', hidden: true, onclick: () => pending && reveal(pending) }, 'Valider');
     const hint = h('span', { class: 'consigne' }, 'Touche la carte pour placer ton repère');

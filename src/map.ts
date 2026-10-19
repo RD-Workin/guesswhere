@@ -4,10 +4,16 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // Le worker de MapLibre est servi comme fichier de l'app (même origine, compatible CSP).
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { worldGeoJson } from './countries';
-import type { Bounds } from './framing';
 import type { LatLng } from './geo';
 
 maplibregl.setWorkerUrl(workerUrl);
+
+/**
+ * Vue de départ de chaque manche : le monde entier, identique pour toutes les
+ * parties. Un cadrage calculé sur les photos de la partie donnait la réponse
+ * (une partie à une photo, ou un voyage dans une seule ville, était cadré dessus).
+ */
+const WORLD: LngLatBoundsLike = [[-170, -58], [180, 78]];
 
 const dark = () => matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -43,8 +49,8 @@ export class GameMap {
     this.map = new maplibregl.Map({
       container,
       style: style(),
-      center: [0, 20],
-      zoom: 0.5,
+      bounds: WORLD,
+      fitBoundsOptions: { padding: 8 },
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
@@ -64,9 +70,9 @@ export class GameMap {
     this.onTap = fn;
   }
 
-  /** Cadre la carte sur la zone de départ de la partie. */
-  frame(b: Bounds) {
-    this.map.fitBounds([[b.west, b.south], [b.east, b.north]] as LngLatBoundsLike, { animate: false, padding: 8 });
+  /** Remet la vue de départ : le monde entier, quelle que soit la photo. */
+  resetView() {
+    this.map.fitBounds(WORLD, { animate: false, padding: 8 });
   }
 
   setMarkers(specs: MarkerSpec[]) {

@@ -1,5 +1,4 @@
 import { distanceKm, type LatLng } from './geo';
-import { startFrame, type Bounds } from './framing';
 import { roundScore } from './score';
 
 export interface GamePhoto extends LatLng {
@@ -14,8 +13,6 @@ export interface Guess extends LatLng {
 export interface Game {
   players: string[];
   rounds: GamePhoto[];
-  /** Cadrage de départ, identique pour toutes les manches. */
-  frame: Bounds;
   /** guesses[manche][joueur] */
   guesses: (Guess | undefined)[][];
   round: number;
@@ -34,8 +31,7 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 /**
- * Prépare une partie. Le cadrage de départ vient de toute la sélection
- * (voyage, pays ou tout), pas des seules photos tirées, pour ne rien révéler.
+ * Prépare une partie.
  * `ordered` garde l'ordre donné (partie reçue d'un ami : mêmes photos, même ordre).
  */
 export function newGame(pool: GamePhoto[], players: string[], rounds = DEFAULT_ROUNDS, ordered = false): Game {
@@ -45,7 +41,6 @@ export function newGame(pool: GamePhoto[], players: string[], rounds = DEFAULT_R
   return {
     players,
     rounds: picked,
-    frame: startFrame(pool),
     guesses: picked.map(() => players.map(() => undefined)),
     round: 0,
     player: 0,
