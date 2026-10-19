@@ -58,14 +58,14 @@ describe('cadrage de départ', () => {
 
 describe('voyages', () => {
   const day = 86400000;
-  it('coupe après 3 jours ou 500 km', () => {
+  it('coupe après 3 jours, pas à la distance (vol intérieur)', () => {
     const p = (takenAt: number, lat: number, lng: number) => ({ takenAt, lat, lng });
     const trips = groupIntoTrips([
-      p(0, 48.85, 2.35), p(day, 48.86, 2.35), // Paris
-      p(2 * day, 35.68, 139.69), // Tokyo le lendemain : > 500 km
-      p(10 * day, 35.68, 139.7), // Tokyo une semaine plus tard : > 3 jours
+      p(0, 35.68, 139.69), p(day, 35.69, 139.7), // Tokyo
+      p(2 * day, 26.21, 127.68), // Okinawa le lendemain : même voyage
+      p(10 * day, 48.85, 2.35), // Paris une semaine plus tard : nouveau voyage
     ]);
-    expect(trips.map((t) => t.length)).toEqual([2, 1, 1]);
+    expect(trips.map((t) => t.length)).toEqual([3, 1]);
   });
 });
 

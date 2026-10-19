@@ -1,0 +1,8 @@
+# En-têtes HTTP pour un hébergeur qui les accepte (Cloudflare Pages, Netlify).
+# GitHub Pages les ignore : seule la CSP en <meta> s'applique alors (voir decisions.md D11).
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; worker-src 'self' blob:; child-src blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
