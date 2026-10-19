@@ -57,7 +57,7 @@ try {
 
   // Partie solo de 2 manches.
   await page.getByText('Continuer').click();
-  await page.getByRole('button', { name: 'Jouer' }).click();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).click();
   await page.locator('#manches').fill('2');
   await page.getByText('Commencer').click();
   for (let i = 0; i < 2; i++) {
@@ -83,10 +83,10 @@ try {
   await page.setViewportSize({ width: 390, height: 664 });
   page.once('dialog', (d) => d.accept());
   await page.getByRole('button', { name: 'Quitter la partie' }).click();
-  await page.getByRole('button', { name: 'Jouer' }).waitFor();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).waitFor();
 
   // Duel : écran de passage entre les joueurs.
-  await page.getByRole('button', { name: 'Jouer' }).click();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).click();
   await page.locator('#manches').fill('1');
   await page.locator('#duel').check();
   await page.locator('#j1').fill('Léa');
