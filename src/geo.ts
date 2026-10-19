@@ -30,8 +30,11 @@ export function spreadKm(points: LatLng[]): number {
   return max;
 }
 
+/** Distance en français. On arrondit avant de choisir l'unité (pas de « 1000 m » ni de « 10,0 km »). */
 export function formatDistance(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m`;
-  if (km < 10) return `${km.toFixed(1).replace('.', ',')} km`;
+  const m = Math.round(km * 1000);
+  if (m < 1000) return `${m} m`;
+  const tenths = Math.round(km * 10) / 10;
+  if (tenths < 10) return `${tenths.toFixed(1).replace('.', ',')} km`;
   return `${Math.round(km).toLocaleString('fr-FR')} km`;
 }

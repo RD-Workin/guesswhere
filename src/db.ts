@@ -12,7 +12,14 @@ function open(): Promise<IDBDatabase> {
     req.onupgradeneeded = () => {
       req.result.createObjectStore(PHOTOS, { keyPath: 'id' });
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      // Une autre fenêtre demande la suppression : on libère la base.
+      req.result.onversionchange = () => {
+        req.result.close();
+        dbPromise = undefined;
+      };
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error);
   });
   return dbPromise;
@@ -65,7 +72,8 @@ export async function wipeEverything(): Promise<void> {
     const req = indexedDB.deleteDatabase(DB_NAME);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
-    req.onblocked = () => resolve(); // une autre fenêtre tient la base : elle sera supprimée à sa fermeture
+    // Une autre fenêtre tient la base : on ne prétend pas avoir tout supprimé.
+    req.onblocked = () => reject(new Error('Base de données ouverte ailleurs'));
   });
   try { localStorage.clear(); sessionStorage.clear(); } catch { /* stockage indisponible */ }
   if ('caches' in window) {

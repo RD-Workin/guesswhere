@@ -68,6 +68,8 @@ export interface Photo {
   lat: number;
   lng: number;
   takenAt: number;
+  /** Pas de date de prise de vue dans les EXIF : takenAt est alors la date du fichier, peu fiable. */
+  undated?: boolean;
   countryId?: string;
   countryName?: string;
   addedAt: number;
@@ -92,6 +94,7 @@ export async function importFile(file: File): Promise<ImportOutcome> {
         lat: exif.lat,
         lng: exif.lng,
         takenAt: exif.takenAt ?? file.lastModified,
+        undated: exif.takenAt === undefined || undefined,
         countryId: country?.id,
         countryName: country?.name,
         addedAt: Date.now(),

@@ -40,6 +40,7 @@ try {
   const stored = await page.evaluate(async () => {
     const db = await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => r(q.result); });
     const all = await new Promise((r) => { const q = db.transaction('photos').objectStore('photos').getAll(); q.onsuccess = () => r(q.result); });
+    db.close();
     return Promise.all(all.map(async (p) => {
       const bytes = new Uint8Array(await p.blob.arrayBuffer());
       const text = new TextDecoder('latin1').decode(bytes);
@@ -131,8 +132,25 @@ try {
   await page.getByText('Tout a été supprimé').waitFor();
 
   await page.goto('http://localhost:4191/');
-  const count = await page.evaluate(() => new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; if (!db.objectStoreNames.contains('photos')) return r(0); const c = db.transaction('photos').objectStore('photos').count(); c.onsuccess = () => r(c.result); }; }));
+  const count = await page.evaluate(() => new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; if (!db.objectStoreNames.contains('photos')) { db.close(); return r(0); } const c = db.transaction('photos').objectStore('photos').count(); c.onsuccess = () => { db.close(); r(c.result); }; }; }));
   assert.equal(count, 0);
+  // Cache hors ligne et service worker eux aussi supprimés (le rechargement a pu réinscrire le SW : on vérifie juste après la suppression).
+  await page.getByText('Réglages et confidentialité').click();
+  await page.getByRole('button', { name: 'Tout supprimer' }).click();
+  await page.getByText('Confirmer sans maintenir').click();
+  await page.getByText('Oui, tout supprimer').click();
+  await page.getByText('Tout a été supprimé').waitFor();
+  const leftovers = await page.evaluate(async () => ({ caches: await caches.keys(), sw: (await navigator.serviceWorker.getRegistrations()).length }));
+  assert.deepEqual(leftovers, { caches: [], sw: 0 });
+
+  // Refus d'affichage dans une page tierce : une page d'une autre origine intègre l'app.
+  await ctx.route('http://hote.test/', (r) => r.fulfill({ contentType: 'text/html', body: '<iframe src="http://app.test/" width="300" height="300"></iframe>' }));
+  await ctx.route('http://app.test/**', async (r) => r.fulfill({ response: await r.fetch({ url: r.request().url().replace('http://app.test', 'http://localhost:4191') }) }));
+  await page.goto('http://hote.test/');
+  await page.frameLocator('iframe').getByText('ne peut pas être affiché').waitFor();
+  assert.equal(await page.frameLocator('iframe').locator('button').count(), 0);
+  problems.splice(0, problems.length, ...problems.filter((m) => !m.includes('iframe')));
+  thirdParty.splice(0, thirdParty.length, ...thirdParty.filter((u) => !u.includes('.test/')));
   assert.deepEqual(thirdParty, [], 'requêtes vers un tiers : ' + thirdParty.join(', '));
   assert.deepEqual(problems, [], 'erreurs console / CSP');
   console.log('E2E OK');

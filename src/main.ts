@@ -36,12 +36,15 @@ interface Trip {
 }
 
 function tripsOf(photos: Photo[]): Trip[] {
-  return groupIntoTrips(photos).map((ps) => {
+  // Les photos sans date EXIF ne sont pas rangées par date : elles fausseraient les voyages.
+  const undated = photos.filter((p) => p.undated);
+  const trips = groupIntoTrips(photos.filter((p) => !p.undated)).map((ps) => {
     const counts = new Map<string, number>();
     for (const p of ps) if (p.countryName) counts.set(p.countryName, (counts.get(p.countryName) ?? 0) + 1);
     const country = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Voyage';
     return { name: `${country} · ${monthFmt.format(ps[0].takenAt)}`, photos: ps };
   }).reverse();
+  return undated.length ? [...trips, { name: 'Photos sans date', photos: undated }] : trips;
 }
 
 function countriesOf(photos: Photo[]): Trip[] {
@@ -299,7 +302,12 @@ async function settings() {
 
 function confirmWipe(count: number, trips: number) {
   const wipe = async () => {
-    await wipeEverything();
+    try {
+      await wipeEverything();
+    } catch {
+      home('La suppression n’a pas pu se terminer. Ferme les autres fenêtres de GuessWhere, puis réessaie.');
+      return;
+    }
     photoUrls.forEach((u) => URL.revokeObjectURL(u));
     photoUrls.clear();
     home(`Tout a été supprimé (${plural(count, 'photo', 'photos')}, ${plural(trips, 'voyage', 'voyages')}).`);
