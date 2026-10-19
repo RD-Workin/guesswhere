@@ -443,9 +443,9 @@ async function playReceived(record: ReceivedGame) {
 
 async function settings() {
   const photos = await allPhotos();
-  // Empreinte de la version installée, à comparer avec la dernière publication sur GitHub.
-  const version = h('p', { class: 'badge' }, 'Version installée : …');
-  installedVersion().then((v) => (version.textContent = `Version installée : ${v}`));
+  // Repère de la version installée : le même code est affiché dans le résumé de chaque publication sur GitHub (onglet Actions).
+  const version = h('p', { class: 'badge' }, 'Repère de version : …');
+  installedVersion().then((v) => (version.textContent = `Repère de version : ${v}`));
   screen(
     h('h2', {}, 'Réglages et confidentialité'),
     h('section', { class: 'texte' },
