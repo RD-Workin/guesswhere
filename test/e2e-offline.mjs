@@ -1,5 +1,6 @@
 // Tout le jeu sans connexion, une fois l'app chargée une première fois :
 // import, partie solo, duel, envoi à un ami, partie reçue (interrompue puis reprise).
+import { existsSync } from 'fs';
 import { chromium, devices } from 'playwright-core';
 import { spawn } from 'child_process';
 import { readFileSync } from 'fs';
@@ -8,7 +9,7 @@ import assert from 'assert/strict';
 const PORT = 4194;
 const server = spawn('node_modules/.bin/vite', ['preview', '--port', String(PORT), '--strictPort'], { stdio: 'pipe', detached: true });
 await new Promise((r) => server.stdout.on('data', (d) => String(d).includes(String(PORT)) && r()));
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 const { defaultBrowserType, ...iphone } = devices['iPhone 13'];
 const ctx = await browser.newContext({ ...iphone, isMobile: false, acceptDownloads: true });
 await ctx.addInitScript(() => Object.defineProperty(navigator, 'standalone', { get: () => true }));

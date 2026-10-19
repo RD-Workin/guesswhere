@@ -18,6 +18,10 @@ export const SHARE_FILE_NAME = 'partie.guesswhere';
 export const MAX_SHARED_PHOTOS = 15;
 /** Durée de vie d'une partie reçue (protection de confort : dépend de l'horloge de l'ami). */
 export const SHARE_TTL_MS = 7 * 24 * 3600 * 1000;
+/** Taille maximale d'un fichier reçu, vérifiée avant de le lire (15 photos ≈ 3 à 5 Mo). */
+export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+/** Positions envoyées arrondies à 3 décimales (≈ 100 m) : l'ami n'a pas l'adresse exacte, et le score ne change pas (moins de 100 m = score maximal). */
+const roundPos = (x: number) => Math.round(x * 1000) / 1000;
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans I, O, 0, 1 : pas de confusion à la lecture
 
 export interface SharedRound {
@@ -78,7 +82,7 @@ export async function packGame(game: SharedGame, code: string): Promise<Blob> {
     createdAt: game.createdAt,
     expiresAt: game.expiresAt,
     from: game.from,
-    rounds: game.rounds.map((r, i) => ({ lat: r.lat, lng: r.lng, size: images[i].length })),
+    rounds: game.rounds.map((r, i) => ({ lat: roundPos(r.lat), lng: roundPos(r.lng), size: images[i].length })),
   };
   const json = new TextEncoder().encode(JSON.stringify(header));
   const len = new Uint8Array(4);
@@ -89,9 +93,31 @@ export async function packGame(game: SharedGame, code: string): Promise<Blob> {
   return new Blob([new TextEncoder().encode(MAGIC), iv, cipher], { type: 'application/octet-stream' });
 }
 
+const BAD_FILE = 'Fichier de partie invalide';
+
+/** Vérifie l'en-tête déchiffré : il vient d'un ami qui a le code, pas forcément d'un fichier sain. */
+function checkHeader(h: unknown, imagesBytes: number): Header {
+  const ok = (c: boolean) => { if (!c) throw new Error(BAD_FILE); };
+  const x = h as Header;
+  ok(typeof x === 'object' && x !== null);
+  ok(typeof x.id === 'string' && x.id.length > 0 && x.id.length <= 64);
+  ok(typeof x.from === 'string' && x.from.length <= 40);
+  ok(Number.isFinite(x.createdAt) && Number.isFinite(x.expiresAt));
+  ok(Array.isArray(x.rounds) && x.rounds.length >= 1 && x.rounds.length <= MAX_SHARED_PHOTOS);
+  let total = 0;
+  for (const r of x.rounds) {
+    ok(Number.isFinite(r.lat) && Math.abs(r.lat) <= 90 && Number.isFinite(r.lng) && Math.abs(r.lng) <= 180);
+    ok(Number.isInteger(r.size) && r.size > 0);
+    total += r.size;
+  }
+  ok(total === imagesBytes);
+  return x;
+}
+
 export async function unpackGame(file: Blob, code: string, now = Date.now()): Promise<SharedGame> {
+  if (file.size > MAX_FILE_BYTES) throw new Error('Fichier trop gros pour une partie GuessWhere');
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (new TextDecoder().decode(bytes.subarray(0, 4)) !== MAGIC) throw new Error('Ce fichier n’est pas une partie GuessWhere');
+  if (bytes.length < 4 + 12 + 16 || new TextDecoder().decode(bytes.subarray(0, 4)) !== MAGIC) throw new Error('Ce fichier n’est pas une partie GuessWhere');
   const iv = bytes.subarray(4, 16);
   const key = await keyFrom(code); // « Code invalide » si le format est faux
   let plain: Uint8Array;
@@ -100,14 +126,24 @@ export async function unpackGame(file: Blob, code: string, now = Date.now()): Pr
   } catch {
     throw new Error('Code incorrect ou fichier abîmé');
   }
+  if (plain.length < 4) throw new Error(BAD_FILE);
   const len = new DataView(plain.buffer, plain.byteOffset).getUint32(0);
-  const header = JSON.parse(new TextDecoder().decode(plain.subarray(4, 4 + len))) as Header;
-  if (now > header.expiresAt) throw new Error('Cette partie a expiré (plus de 7 jours).');
+  if (len > 64 * 1024 || 4 + len > plain.length) throw new Error(BAD_FILE);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(plain.subarray(4, 4 + len)));
+  } catch {
+    throw new Error(BAD_FILE);
+  }
+  const header = checkHeader(parsed, plain.length - 4 - len);
+  // L'expéditeur ne peut pas allonger la durée de vie au-delà de 7 jours.
+  const expiresAt = Math.min(header.expiresAt, header.createdAt + SHARE_TTL_MS);
+  if (now > expiresAt) throw new Error('Cette partie a expiré (plus de 7 jours).');
   let offset = 4 + len;
   const rounds = header.rounds.map((r) => {
     const image = new Blob([plain.slice(offset, offset + r.size)], { type: 'image/jpeg' });
     offset += r.size;
     return { image, lat: r.lat, lng: r.lng };
   });
-  return { id: header.id, createdAt: header.createdAt, expiresAt: header.expiresAt, from: header.from, rounds };
+  return { id: header.id, createdAt: header.createdAt, expiresAt, from: header.from.slice(0, 20), rounds };
 }

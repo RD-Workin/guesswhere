@@ -1,8 +1,9 @@
 // Rend l'icône SVG en PNG (iOS exige un PNG plein cadre, sans coins transparents).
+import { existsSync } from 'fs';
 import { chromium } from 'playwright-core';
 import { readFileSync } from 'fs';
 const svg = readFileSync(new URL('../public/icone.svg', import.meta.url), 'utf8').replace('rx="112"', 'rx="0"');
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 const page = await browser.newPage();
 for (const size of [180, 512]) {
   await page.setViewportSize({ width: size, height: size });
