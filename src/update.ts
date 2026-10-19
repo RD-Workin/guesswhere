@@ -30,6 +30,10 @@ export async function registerServiceWorker(): Promise<void> {
     listeners.forEach((fn) => fn());
   };
   flag(reg.waiting);
+  // Une PWA iOS remise au premier plan n'est pas relancée : on vérifie alors s'il existe une nouvelle version (sans effet hors ligne).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') reg.update().catch(() => undefined);
+  });
   reg.addEventListener('updatefound', () => {
     const w = reg.installing;
     w?.addEventListener('statechange', () => w.state === 'installed' && flag(w));
