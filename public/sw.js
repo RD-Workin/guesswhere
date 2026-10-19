@@ -29,9 +29,9 @@ self.addEventListener('fetch', (e) => {
     const cache = await caches.open(CACHE);
     // Navigation : la page de l'app, quelle que soit l'URL (ex. ?partie=…).
     if (req.mode === 'navigate') {
-      return (await cache.match('./', { ignoreSearch: true })) || fetch(req);
+      return (await cache.match('./', { ignoreSearch: true, ignoreVary: true })) || fetch(req);
     }
-    const hit = await cache.match(req, { ignoreSearch: true });
+    const hit = await cache.match(req, { ignoreSearch: true, ignoreVary: true });
     if (hit) return hit;
     const res = await fetch(req);
     if (res.ok) cache.put(req, res.clone());

@@ -24,6 +24,20 @@ const playRound = async (label, x, y) => {
 };
 
 try {
+  // Bug B9 : une seule visite sans recharger, puis hors ligne, répété dans des contextes neufs.
+  for (let i = 0; i < 4; i++) {
+    const c = await browser.newContext({ ...iphone, isMobile: false });
+    await c.addInitScript(() => Object.defineProperty(navigator, 'standalone', { get: () => true }));
+    const p = await c.newPage();
+    await p.goto(`http://localhost:${PORT}/`);
+    await p.evaluate(() => navigator.serviceWorker.ready);
+    await c.setOffline(true);
+    await p.reload();
+    await p.getByText('Aucune photo').waitFor({ timeout: 10000 });
+    assert.ok(await p.locator('input[type=file]').count(), `essai ${i + 1} : app incomplète hors ligne`);
+    await c.close();
+  }
+
   // Une seule visite en ligne (bug B8) : le service worker précharge tout à l'installation.
   await page.goto(`http://localhost:${PORT}/`);
   await page.evaluate(() => navigator.serviceWorker.ready);
