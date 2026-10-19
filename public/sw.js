@@ -25,6 +25,8 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  // La vue satellite (dizaines de Mo) a son propre cache, géré par l'app (satellite.ts).
+  if (url.pathname.includes('/carte/')) return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     // Navigation : la page de l'app, quelle que soit l'URL (ex. ?partie=…).

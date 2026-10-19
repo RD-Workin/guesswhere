@@ -6,6 +6,7 @@ Un « GeoGuessr » avec ses propres photos de voyage iPhone. Une photo s'affiche
 - **Tout reste sur le téléphone** : la position GPS est lue dans le navigateur, chaque image est ré-encodée sans métadonnées, la carte est embarquée, aucune requête vers un tiers. Un bouton efface tout.
 - Ce dépôt ne contient que du code. Les images de `test/fixtures/` sont des dégradés générés, avec des positions fictives.
 - Gratuit : hébergé sur GitHub Pages, aucun service payant.
+- Vue satellite facultative (NASA Blue Marble, domaine public) : construite à la publication par `scripts/satellite.py`, téléchargée en entier depuis les Réglages. Un seul fichier pour tout le monde, donc rien ne révèle les lieux regardés.
 
 ## Développement
 
