@@ -31,6 +31,9 @@ jobs:
       - run: npx playwright-core install --with-deps chromium
       - run: npm run test:e2e
       - run: npm run build
+      # Repère de version affiché dans l'app (Réglages), recopié dans le résumé de la publication.
+      - run: |
+          echo "Repère de version (Réglages de l'app) : $(sed -n "s/^self.__VERSION__ = '\(.*\)';$/\1/p" dist/sw.js)" >> "$GITHUB_STEP_SUMMARY"
       # Vue satellite mondiale (NASA Blue Marble, domaine public), la même pour
       # tout le monde. Les tuiles d'origine sont gardées en cache d'Actions pour
       # ne pas les retélécharger à chaque publication. En cas d'échec, le site

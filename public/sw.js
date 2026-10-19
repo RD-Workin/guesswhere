@@ -10,8 +10,15 @@ self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     await cache.addAll(PRECACHE.map((p) => new Request(p, { cache: 'reload' })));
-    await self.skipWaiting();
+    // Pas de skipWaiting ici : une nouvelle version attend que l'utilisateur
+    // l'accepte (bandeau « Nouvelle version disponible »). La toute première
+    // installation s'active d'elle-même, puisqu'aucune version ne tourne encore.
   })());
+});
+
+self.addEventListener('message', (e) => {
+  if (e.data === 'activer') self.skipWaiting();
+  if (e.data === 'version') e.source?.postMessage({ version: CACHE.replace('guesswhere-', '') });
 });
 
 self.addEventListener('activate', (e) => {

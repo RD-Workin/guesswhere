@@ -93,6 +93,8 @@ try {
   await page.locator('#j1').fill('Léa');
   await page.locator('#j2').fill('Tom');
   await page.getByText('Commencer').click();
+  // Premier duel : conseil Accès guidé, montré une seule fois.
+  await page.getByText('Compris, on joue').click();
   await page.getByText('Léa · Manche 1/1').waitFor();
   await page.locator('.carte').click({ position: { x: 100, y: 100 } });
   await page.screenshot({ path: 'test/out-manche.png' });

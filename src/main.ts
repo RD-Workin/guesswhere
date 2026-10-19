@@ -8,6 +8,7 @@ import { MAX_SCORE } from './score';
 import { newShareCode, packGame, unpackGame, MAX_SHARED_PHOTOS, SHARE_FILE_NAME, SHARE_TTL_MS } from './share';
 import * as satellite from './satellite';
 import { groupIntoTrips } from './trips';
+import { acceptUpdate, CHANGES_URL, installedVersion, onUpdateWaiting, registerServiceWorker, updateWaiting } from './update';
 import { h, nf, plural, screen } from './ui';
 
 const PLAYER_COLORS = ['#0A84FF', '#FF9F0A'];
@@ -67,6 +68,11 @@ async function home(message?: string) {
   screen(
     h('header', { class: 'titre' }, h('h1', {}, 'GuessWhere'), h('p', { class: 'badge' }, 'Sur ton iPhone uniquement')),
     message && h('p', { class: 'info', role: 'status' }, message),
+    updateWaiting() && h('section', { class: 'bandeau' },
+      h('p', {}, h('strong', {}, 'Nouvelle version disponible.'), ' Elle ne s’installe pas sans ton accord.'),
+      h('p', {}, h('a', { href: CHANGES_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Voir ce qui change')),
+      h('button', { class: 'principal', onclick: () => acceptUpdate() }, 'Installer la nouvelle version'),
+    ),
     !canImport() && h('section', { class: 'bandeau' },
       h('p', {}, h('strong', {}, 'Installe d’abord GuessWhere sur ton écran d’accueil.')),
       h('ol', {},
@@ -172,7 +178,8 @@ function setup(photos: Photo[]) {
         const names = [p1.value.trim() || 'Joueur 1'];
         if (duel.checked) names.push(p2.value.trim() || 'Joueur 2');
         const n = Math.min(20, Math.max(1, Math.round(Number(rounds.value)) || DEFAULT_ROUNDS));
-        play(newGame(pool, names, n), pool);
+        const start = () => play(newGame(pool, names, n), pool);
+        if (names.length > 1) guidedAccessTip(start); else start();
       } }, 'Commencer'),
       h('button', { onclick: () => {
         const pool = selections[Number(select.value)].photos;
@@ -181,6 +188,20 @@ function setup(photos: Photo[]) {
       } }, 'Envoyer à un ami'),
       h('button', { onclick: () => home() }, 'Retour'),
     ),
+  );
+}
+
+/** Conseil montré une seule fois avant le premier duel : prêter son téléphone sans donner accès au reste. */
+function guidedAccessTip(start: () => void) {
+  const KEY = 'conseil-acces-guide';
+  let seen = false;
+  try { seen = localStorage.getItem(KEY) === '1'; localStorage.setItem(KEY, '1'); } catch { /* stockage indisponible */ }
+  if (seen) return start();
+  screen(
+    h('h2', {}, 'Avant de prêter ton téléphone'),
+    h('p', {}, 'Pour que l’autre joueur reste dans GuessWhere sans pouvoir ouvrir tes photos ou tes messages, active l’Accès guidé : triple clic sur le bouton latéral, puis « Démarrer ». Même triple clic et ton code pour en sortir.'),
+    h('p', {}, 'Si l’option n’apparaît pas : Réglages > Accessibilité > Accès guidé.'),
+    h('div', { class: 'actions' }, h('button', { class: 'principal', onclick: start }, 'Compris, on joue')),
   );
 }
 
@@ -421,6 +442,9 @@ async function playReceived(record: ReceivedGame) {
 
 async function settings() {
   const photos = await allPhotos();
+  // Repère de la version installée : le même code est affiché dans le résumé de chaque publication sur GitHub (onglet Actions).
+  const version = h('p', { class: 'badge' }, 'Repère de version : …');
+  installedVersion().then((v) => (version.textContent = `Repère de version : ${v}`));
   screen(
     h('h2', {}, 'Réglages et confidentialité'),
     h('section', { class: 'texte' },
@@ -432,6 +456,7 @@ async function settings() {
       ),
     ),
     satelliteSection(),
+    version,
     h('div', { class: 'actions' },
       h('button', { onclick: () => gpsTest() }, 'Tester la lecture GPS'),
       h('button', { class: 'danger', onclick: () => confirmWipe(photos.length, tripsOf(photos).length) }, 'Tout supprimer'),
@@ -570,8 +595,10 @@ document.addEventListener('visibilitychange', () => masquer(document.visibilityS
 window.addEventListener('pagehide', () => masquer(true));
 window.addEventListener('pageshow', () => masquer(document.visibilityState === 'hidden'));
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+if (import.meta.env.PROD) {
+  registerServiceWorker().catch(() => undefined);
+  // Le bandeau de mise à jour n'apparaît qu'à l'accueil, jamais en pleine partie.
+  onUpdateWaiting(() => document.querySelector('.titre') && home());
 }
 
 home();
