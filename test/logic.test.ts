@@ -26,7 +26,7 @@ describe('distance (grille du fil « Chasse aux bugs »)', () => {
 
 describe('score logarithmique (C4, grille de bugs.md)', () => {
   it('valeurs de référence', () => {
-    const grid: [number, number][] = [[0, 5000], [0.1, 5000], [1, 4057], [5, 3398], [10, 3114], [100, 2170], [344, 1664], [1000, 1227], [5837, 504], [20015, 0]];
+    const grid: [number, number][] = [[0, 5000], [0.1, 5000], [0.8, 4148], [1, 4057], [3, 3607], [5, 3398], [10, 3114], [100, 2170], [344, 1664], [1000, 1227], [5837, 504], [20015, 0]];
     for (const [d, pts] of grid) expect(roundScore(d), `${d} km`).toBe(pts);
   });
   it('borné, monotone, sans NaN', () => {

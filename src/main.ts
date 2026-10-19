@@ -81,10 +81,14 @@ async function home(message?: string) {
   );
 }
 
-function importButton(): HTMLElement {
-  const input = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+/**
+ * Sélecteur de photos. Accepter explicitement le HEIC fait livrer par Safari
+ * l'original (plus léger, GPS conservé) au lieu d'un JPEG converti (test iOS 18.7).
+ */
+function importButton(label = 'Importer des photos', primary = false): HTMLElement {
+  const input = h('input', { type: 'file', accept: '.heic,.heif,image/*', multiple: true, hidden: true });
   input.addEventListener('change', () => input.files?.length && runImport([...input.files]));
-  return h('label', { class: 'bouton' }, 'Importer des photos', input);
+  return h('label', { class: primary ? 'bouton principal' : 'bouton' }, label, input);
 }
 
 async function runImport(files: File[]) {
@@ -108,10 +112,13 @@ async function runImport(files: File[]) {
       noGps > 0 && h('li', {}, `${plural(noGps, 'photo ignorée', 'photos ignorées')} : pas de position`),
       errors > 0 && h('li', {}, `${plural(errors, 'photo illisible', 'photos illisibles')}`),
     ),
-    noGps > 0 && ok === 0 && h('p', { class: 'bandeau' },
-      'Aucune position trouvée. Dans le sélecteur de photos, touche « Options » et active « Position », ou importe depuis l’app Fichiers.'),
+    noGps > 0 && h('p', { class: 'bandeau' },
+      `${plural(noGps, 'photo', 'photos')} sans position. Dans le sélecteur, touche « Options » et vérifie que « Localisation » est activée.`),
     h('p', { class: 'badge' }, 'Les images ont été réduites et nettoyées de leurs métadonnées. Les originaux ne sont pas conservés.'),
-    h('div', { class: 'actions' }, h('button', { class: 'principal', onclick: () => home() }, 'Continuer')),
+    h('div', { class: 'actions' },
+      noGps > 0 && importButton('Réessayer'),
+      h('button', { class: 'principal', onclick: () => home() }, 'Continuer'),
+    ),
   );
 }
 
@@ -301,7 +308,7 @@ function confirmWipe(count: number) {
 /** Diagnostic : vérifie sur l'iPhone que Safari transmet bien la position des photos. Rien n'est enregistré. */
 function gpsTest() {
   const out = h('ul', { class: 'bilan' });
-  const input = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+  const input = h('input', { type: 'file', accept: '.heic,.heif,image/*', multiple: true, hidden: true });
   input.addEventListener('change', async () => {
     out.replaceChildren();
     for (const f of input.files ?? []) {

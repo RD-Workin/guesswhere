@@ -28,11 +28,13 @@ try {
   await page.evaluate(() => sessionStorage.clear());
   await page.reload();
   await page.getByText('Aucune photo').waitFor();
-  await page.locator('input[type=file]').setInputFiles(['tokyo', 'rio', 'sans-gps', 'zero'].map((f) => `test/fixtures/${f}.jpg`));
+  await page.locator('input[type=file]').first().setInputFiles(['tokyo', 'rio', 'sans-gps', 'zero'].map((f) => `test/fixtures/${f}.jpg`));
   await page.getByText('Import terminé').waitFor();
   const bilan = await page.locator('.bilan').innerText();
   assert.match(bilan, /2 photos ajoutées/);
   assert.match(bilan, /2 photos ignorées/);
+  await page.getByText('2 photos sans position').waitFor();
+  await page.getByText('Réessayer').waitFor();
 
   // Aucune métadonnée dans les images stockées, aucun nom de fichier d'origine.
   const stored = await page.evaluate(async () => {
