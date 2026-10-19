@@ -1,6 +1,7 @@
 // Vue satellite : téléchargement en un seul morceau depuis les Réglages,
 // affichage dans la partie, retrait. Archive de test : tuiles factices z0-3
 // produites par scripts/satellite.py à partir d'images générées.
+import { existsSync } from 'fs';
 import { chromium, devices } from 'playwright-core';
 import { spawn } from 'child_process';
 import { cpSync, mkdirSync } from 'fs';
@@ -10,7 +11,7 @@ mkdirSync('dist/carte', { recursive: true });
 cpSync('test/fixtures/satellite', 'dist/carte', { recursive: true });
 const server = spawn('node_modules/.bin/vite', ['preview', '--port', '4193', '--strictPort'], { stdio: 'pipe', detached: true });
 await new Promise((r) => server.stdout.on('data', (d) => String(d).includes('4193') && r()));
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 const { defaultBrowserType, ...iphone } = devices['iPhone 13'];
 const ctx = await browser.newContext({ ...iphone, isMobile: false });
 await ctx.addInitScript(() => Object.defineProperty(navigator, 'standalone', { get: () => true }));

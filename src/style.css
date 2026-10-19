@@ -110,3 +110,7 @@ textarea { width: 100%; font: inherit; padding: 8px 12px; border-radius: 10px; b
 .bandeau ol { padding-left: 20px; margin: 8px 0; }
 .bandeau p { margin: 4px 0; }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: 0s !important; transition: none !important; } }
+
+/* Masque du sélecteur d'apps (main.ts) */
+.masque { position: fixed; inset: 0; z-index: 10000; background: var(--bg, #000); display: flex; align-items: center; justify-content: center; }
+.masque img { width: 96px; height: 96px; border-radius: 22px; }

@@ -301,7 +301,7 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
 // ---------- Entre amis : mêmes photos, chacun sur son téléphone ----------
 
 /** Partage par la feuille iOS (AirDrop, Messages…), ou téléchargement si elle n'existe pas. */
-async function shareOut(data: { file?: File; text?: string }): Promise<'partagé' | 'copié' | 'téléchargé' | 'annulé'> {
+async function shareOut(data: { file?: File; text?: string }): Promise<'partagé' | 'à recopier' | 'téléchargé' | 'annulé'> {
   const payload: ShareData = data.file ? { files: [data.file] } : { text: data.text };
   if (navigator.canShare?.(payload)) {
     try {
@@ -317,8 +317,8 @@ async function shareOut(data: { file?: File; text?: string }): Promise<'partagé
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     return 'téléchargé';
   }
-  await navigator.clipboard?.writeText(data.text ?? '').catch(() => undefined);
-  return 'copié';
+  // Pas de copie dans le presse-papiers : avec Continuité, iOS le recopierait sur le Mac voisin.
+  return 'à recopier';
 }
 
 async function sendToFriend(pool: Photo[], rounds: number, from: string) {
@@ -368,7 +368,7 @@ function openReceived(message?: string) {
         if (!f) return openReceived('Choisis d’abord le fichier reçu.');
         let shared;
         try { shared = await unpackGame(f, code.value); } catch (e) { return openReceived((e as Error).message); }
-        const record: ReceivedGame = { id: shared.id, file: f, code: code.value, from: shared.from, player: name.value.trim() || 'Moi', expiresAt: shared.expiresAt, guesses: [] };
+        const record: ReceivedGame = { id: shared.id, file: f, code: code.value, from: shared.from, player: name.value.trim() || 'Moi', expiresAt: Math.min(shared.expiresAt, Date.now() + SHARE_TTL_MS), guesses: [] };
         await saveReceivedGame(record);
         screen(
           h('h2', {}, `Partie de ${shared.from} importée`),
@@ -561,6 +561,14 @@ if (window.top !== window.self) {
   document.body.replaceChildren(document.createTextNode('GuessWhere ne peut pas être affiché dans une autre page.'));
   throw new Error('GuessWhere refuse d’être intégré dans une iframe');
 }
+
+// Écran neutre quand l'app passe en arrière-plan : la vignette du sélecteur
+// d'apps d'iOS ne montre ni photo ni carte.
+const masque = h('div', { class: 'masque', 'aria-hidden': 'true' }, h('img', { src: './icone-512.png', alt: '' }));
+const masquer = (on: boolean) => (on ? document.body.append(masque) : masque.remove());
+document.addEventListener('visibilitychange', () => masquer(document.visibilityState === 'hidden'));
+window.addEventListener('pagehide', () => masquer(true));
+window.addEventListener('pageshow', () => masquer(document.visibilityState === 'hidden'));
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('./sw.js').catch(() => undefined);

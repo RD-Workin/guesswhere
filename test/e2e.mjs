@@ -1,12 +1,13 @@
 // Parcours complet dans Chromium (format iPhone) sur la version publiée :
 // import, nettoyage des métadonnées, partie solo et duel, suppression totale.
+import { existsSync } from 'fs';
 import { chromium, devices } from 'playwright-core';
 import { spawn } from 'child_process';
 import assert from 'assert/strict';
 
 const server = spawn('node_modules/.bin/vite', ['preview', '--port', '4191', '--strictPort'], { stdio: 'pipe', detached: true });
 await new Promise((r) => server.stdout.on('data', (d) => String(d).includes('4191') && r()));
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined) });
 const { defaultBrowserType, ...iphone } = devices['iPhone 13'];
 const ctx = await browser.newContext({ ...iphone, isMobile: false });
 const page = await ctx.newPage();
