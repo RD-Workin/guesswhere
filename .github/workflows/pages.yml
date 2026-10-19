@@ -35,7 +35,7 @@ jobs:
       # tout le monde. Les tuiles d'origine sont gardées en cache d'Actions pour
       # ne pas les retélécharger à chaque publication. En cas d'échec, le site
       # est publié sans elle : l'app garde sa carte dessinée.
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           cache: false
