@@ -1,16 +1,21 @@
 import type { Photo } from './photos';
 
 const DB_NAME = 'guesswhere';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const PHOTOS = 'photos';
+const SENT = 'envois';
 
 let dbPromise: Promise<IDBDatabase> | undefined;
 
 function open(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
+    // Mise à jour du schéma : on ajoute seulement ce qui manque, sans jamais
+    // effacer de données existantes.
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(PHOTOS, { keyPath: 'id' });
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PHOTOS)) db.createObjectStore(PHOTOS, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(SENT)) db.createObjectStore(SENT, { keyPath: 'id' });
     };
     req.onsuccess = () => {
       // Une autre fenêtre demande la suppression : on libère la base.
@@ -32,8 +37,27 @@ function done<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-async function store(mode: IDBTransactionMode) {
-  return (await open()).transaction(PHOTOS, mode).objectStore(PHOTOS);
+async function store(mode: IDBTransactionMode, name = PHOTOS) {
+  return (await open()).transaction(name, mode).objectStore(name);
+}
+
+/** Partie envoyée à un ami : on garde les bonnes réponses pour lire son code de résultat. */
+export interface SentGame {
+  id: string;
+  createdAt: number;
+  answers: { lat: number; lng: number }[];
+}
+
+export async function saveSentGame(g: SentGame): Promise<void> {
+  await done((await store('readwrite', SENT)).put(g));
+}
+
+export async function getSentGame(id: string): Promise<SentGame | undefined> {
+  return done((await store('readonly', SENT)).get(id) as IDBRequest<SentGame | undefined>);
+}
+
+export async function countSentGames(): Promise<number> {
+  return done((await store('readonly', SENT)).count());
 }
 
 export async function addPhoto(photo: Photo): Promise<void> {

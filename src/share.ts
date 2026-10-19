@@ -23,12 +23,14 @@ export interface SharedRound {
 }
 
 export interface SharedGame {
+  id: string; // identifiant aléatoire de la partie, repris dans le code de résultat
   createdAt: number;
   from: string;
   rounds: SharedRound[];
 }
 
 interface Header {
+  id: string;
   createdAt: number;
   from: string;
   rounds: { lat: number; lng: number; size: number }[];
@@ -55,7 +57,7 @@ export function normalizeCode(code: string): string {
 
 async function keyFrom(code: string): Promise<CryptoKey> {
   const norm = normalizeCode(code);
-  if (norm.length !== 26 || [...norm].some((c) => !ALPHABET.includes(c))) throw new Error('Code invalide');
+  if (norm.length !== 26 || [...norm].some((c) => !ALPHABET.includes(c))) throw new Error('Code invalide : il doit faire 26 caractères.');
   const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(norm), 'HKDF', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('guesswhere-partage-v1'), info: new Uint8Array() },
@@ -66,6 +68,7 @@ async function keyFrom(code: string): Promise<CryptoKey> {
 export async function packGame(game: SharedGame, code: string): Promise<Blob> {
   const images = await Promise.all(game.rounds.map(async (r) => new Uint8Array(await r.image.arrayBuffer())));
   const header: Header = {
+    id: game.id,
     createdAt: game.createdAt,
     from: game.from,
     rounds: game.rounds.map((r, i) => ({ lat: r.lat, lng: r.lng, size: images[i].length })),
@@ -83,9 +86,10 @@ export async function unpackGame(file: Blob, code: string): Promise<SharedGame> 
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (new TextDecoder().decode(bytes.subarray(0, 4)) !== MAGIC) throw new Error('Ce fichier n’est pas une partie GuessWhere');
   const iv = bytes.subarray(4, 16);
+  const key = await keyFrom(code); // « Code invalide » si le format est faux
   let plain: Uint8Array;
   try {
-    plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, await keyFrom(code), bytes.subarray(16)));
+    plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, bytes.subarray(16)));
   } catch {
     throw new Error('Code incorrect ou fichier abîmé');
   }
@@ -97,5 +101,40 @@ export async function unpackGame(file: Blob, code: string): Promise<SharedGame> 
     offset += r.size;
     return { image, lat: r.lat, lng: r.lng };
   });
-  return { createdAt: header.createdAt, from: header.from, rounds };
+  return { id: header.id, createdAt: header.createdAt, from: header.from, rounds };
+}
+
+// ---------- Code de résultat (« chacun son tour ») ----------
+//
+// L'ami joue la partie reçue, puis renvoie par Messages un court code texte.
+// Il ne contient que le prénom, les points posés et les scores, rattachés à
+// l'identifiant de la partie : jamais les vraies positions.
+
+const RESULT_PREFIX = 'GWR1-';
+
+export interface GameResult {
+  gameId: string;
+  player: string;
+  guesses: { lat: number; lng: number; score: number }[];
+}
+
+const toB64url = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64url = (s: string) =>
+  Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+
+export function encodeResult(r: GameResult): string {
+  const compact = { g: r.gameId, n: r.player, r: r.guesses.map((g) => [+g.lat.toFixed(4), +g.lng.toFixed(4), g.score]) };
+  return RESULT_PREFIX + toB64url(new TextEncoder().encode(JSON.stringify(compact)));
+}
+
+export function decodeResult(text: string): GameResult {
+  const match = text.match(/GWR1-([A-Za-z0-9_-]+)/);
+  if (!match) throw new Error('Aucun code de résultat GuessWhere dans ce texte');
+  try {
+    const c = JSON.parse(new TextDecoder().decode(fromB64url(match[1]))) as { g: string; n: string; r: [number, number, number][] };
+    return { gameId: String(c.g), player: String(c.n).slice(0, 20), guesses: c.r.map(([lat, lng, score]) => ({ lat: +lat, lng: +lng, score: Math.max(0, Math.min(5000, Math.round(+score))) })) };
+  } catch {
+    throw new Error('Code de résultat illisible');
+  }
 }

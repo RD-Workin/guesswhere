@@ -1,10 +1,11 @@
 import './style.css';
-import { addPhoto, allPhotos, requestPersistence, wipeEverything } from './db';
+import { addPhoto, allPhotos, getSentGame, requestPersistence, saveSentGame, wipeEverything } from './db';
 import { advance, currentPhoto, newGame, submitGuess, totals, DEFAULT_ROUNDS, type Game } from './game';
-import { formatDistance, type LatLng } from './geo';
+import { distanceKm, formatDistance, type LatLng } from './geo';
 import { GameMap } from './map';
 import { importFile, readExif, type Photo } from './photos';
-import { MAX_SCORE } from './score';
+import { MAX_SCORE, roundScore } from './score';
+import { decodeResult, encodeResult, newShareCode, packGame, unpackGame, SHARE_FILE_NAME } from './share';
 import { groupIntoTrips } from './trips';
 import { h, nf, plural, screen } from './ui';
 
@@ -79,6 +80,8 @@ async function home(message?: string) {
       photos.length > 0 && h('button', { class: 'principal', onclick: () => setup(photos) }, 'Jouer'),
       canImport() && importButton(),
       photos.length > 0 && h('button', { onclick: () => library(photos) }, 'Mes voyages'),
+      h('button', { onclick: () => openReceived() }, 'Jouer une partie reçue'),
+      h('button', { onclick: () => readResult() }, 'Lire le résultat d’un ami'),
       h('button', { class: 'discret', onclick: () => settings() }, 'Réglages et confidentialité'),
     ),
   );
@@ -168,6 +171,11 @@ function setup(photos: Photo[]) {
         const n = Math.min(20, Math.max(1, Math.round(Number(rounds.value)) || DEFAULT_ROUNDS));
         play(newGame(pool, names, n), pool);
       } }, 'Commencer'),
+      h('button', { onclick: () => {
+        const pool = selections[Number(select.value)].photos;
+        const n = Math.min(20, Math.max(1, Math.round(Number(rounds.value)) || DEFAULT_ROUNDS));
+        sendToFriend(pool, n, p1.value.trim() || 'Un ami');
+      } }, 'Envoyer à un ami'),
       h('button', { onclick: () => home() }, 'Retour'),
     ),
   );
@@ -175,7 +183,7 @@ function setup(photos: Photo[]) {
 
 // ---------- Partie ----------
 
-function play(game: Game, pool: Photo[]) {
+function play(game: Game, pool: Photo[], onFinish?: (game: Game) => void) {
   const byId = new Map(pool.map((p) => [p.id, p]));
   const img = h('img', { class: 'photo', alt: '' });
   const mapEl = h('div', { class: 'carte' });
@@ -260,6 +268,7 @@ function play(game: Game, pool: Photo[]) {
 
   const finish = () => {
     map.destroy();
+    if (onFinish) return onFinish(game);
     const t = totals(game);
     const max = MAX_SCORE * game.rounds.length;
     const best = Math.max(...t);
@@ -276,6 +285,131 @@ function play(game: Game, pool: Photo[]) {
   };
 
   map.whenReady().then(turn);
+}
+
+// ---------- Entre amis, chacun son tour ----------
+
+/** Partage par la feuille iOS (AirDrop, Messages…), ou téléchargement si elle n'existe pas. */
+async function shareOut(data: { file?: File; text?: string }): Promise<'partagé' | 'copié' | 'téléchargé' | 'annulé'> {
+  const payload: ShareData = data.file ? { files: [data.file] } : { text: data.text };
+  if (navigator.canShare?.(payload)) {
+    try {
+      await navigator.share(payload);
+      return 'partagé';
+    } catch {
+      return 'annulé';
+    }
+  }
+  if (data.file) {
+    const a = h('a', { href: URL.createObjectURL(data.file), download: data.file.name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    return 'téléchargé';
+  }
+  await navigator.clipboard?.writeText(data.text ?? '').catch(() => undefined);
+  return 'copié';
+}
+
+async function sendToFriend(pool: Photo[], rounds: number, from: string) {
+  screen(h('h2', {}, 'Préparation…'));
+  const draft = newGame(pool, ['ami'], rounds);
+  const byId = new Map(pool.map((p) => [p.id, p]));
+  const picked = draft.rounds.map((r) => byId.get(r.id)!);
+  const id = crypto.randomUUID();
+  const code = newShareCode();
+  const file = new File([await packGame({ id, createdAt: Date.now(), from, rounds: picked.map((p) => ({ image: p.blob, lat: p.lat, lng: p.lng })) }, code)], SHARE_FILE_NAME, { type: 'application/octet-stream' });
+  await saveSentGame({ id, createdAt: Date.now(), answers: picked.map((p) => ({ lat: p.lat, lng: p.lng })) });
+  const status = h('p', { role: 'status' });
+  const grouped = code.replace(/(.{5})(?=.)/g, '$1 ');
+  screen(
+    h('h2', {}, 'Envoyer à un ami'),
+    h('p', {}, `Ces ${plural(picked.length, 'photo', 'photos')} vont partir, sans date ni appareil. Ce qu’on y voit (visages, plaques, adresse) restera visible pour ton ami.`),
+    h('div', { class: 'vignettes' }, ...picked.map((p) => h('img', { src: urlFor(p), alt: '' }))),
+    h('h3', {}, '1. Le fichier'),
+    h('p', {}, 'Il est chiffré : sans le code, personne ne peut l’ouvrir.'),
+    h('div', { class: 'actions' }, h('button', { class: 'principal', onclick: async () => (status.textContent = `Fichier ${await shareOut({ file })}.`) }, 'Envoyer le fichier')),
+    h('h3', {}, '2. Le code, par un autre moyen'),
+    h('p', { class: 'code' }, grouped),
+    h('p', {}, 'Envoie-le dans un autre message, ou dis-le de vive voix. Ensuite, ton ami te renverra un code de résultat.'),
+    h('div', { class: 'actions' },
+      h('button', { onclick: async () => (status.textContent = `Code ${await shareOut({ text: code })}.`) }, 'Envoyer le code'),
+      status,
+      h('button', { onclick: () => home() }, 'Terminé'),
+    ),
+  );
+}
+
+function openReceived(message?: string) {
+  const input = h('input', { type: 'file', hidden: true });
+  const chosen = h('p', {}, 'Aucun fichier choisi.');
+  input.addEventListener('change', () => (chosen.textContent = input.files?.[0] ? 'Fichier prêt.' : 'Aucun fichier choisi.'));
+  const code = h('input', { id: 'code', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'ABCDE FGHIJ …' });
+  const name = h('input', { id: 'prenom', maxlength: 20, autocomplete: 'off', value: 'Moi' });
+  screen(
+    h('h2', {}, 'Jouer une partie reçue'),
+    message && h('p', { class: 'bandeau', role: 'alert' }, message),
+    h('div', { class: 'actions' }, h('label', { class: 'bouton' }, 'Choisir le fichier reçu', input)),
+    chosen,
+    h('p', {}, h('label', { for: 'code' }, 'Code reçu (26 caractères)'), code),
+    h('p', {}, h('label', { for: 'prenom' }, 'Ton prénom'), name),
+    h('div', { class: 'actions' },
+      h('button', { class: 'principal', onclick: async () => {
+        const f = input.files?.[0];
+        if (!f) return openReceived('Choisis d’abord le fichier reçu.');
+        let shared;
+        try { shared = await unpackGame(f, code.value); } catch (e) { return openReceived((e as Error).message); }
+        // Rien n'est enregistré : la partie reçue ne vit qu'en mémoire.
+        const pool: Photo[] = shared.rounds.map((r, i) => ({ id: `${shared.id}-${i}`, blob: r.image, lat: r.lat, lng: r.lng, takenAt: 0, addedAt: 0 }));
+        const player = name.value.trim() || 'Moi';
+        play(newGame(pool, [player], pool.length, true), pool, (game) => {
+          const result = encodeResult({ gameId: shared.id, player, guesses: game.guesses.map((r) => ({ lat: r[0]!.lat, lng: r[0]!.lng, score: r[0]!.score })) });
+          const status = h('p', { role: 'status' });
+          screen(
+            h('h2', {}, 'Fin de partie'),
+            h('p', { class: 'total' }, `${player} : ${nf(totals(game)[0])} / ${nf(MAX_SCORE * game.rounds.length)}`),
+            h('p', {}, `Renvoie ce code à ${shared.from} pour comparer vos scores :`),
+            h('p', { class: 'code' }, result),
+            h('div', { class: 'actions' },
+              h('button', { class: 'principal', onclick: async () => (status.textContent = `Code ${await shareOut({ text: result })}.`) }, 'Envoyer mon résultat'),
+              status,
+              h('button', { onclick: () => home() }, 'Accueil'),
+            ),
+          );
+        });
+      } }, 'Jouer'),
+      h('button', { onclick: () => home() }, 'Retour'),
+    ),
+  );
+}
+
+function readResult(message?: string) {
+  const text = h('textarea', { id: 'resultat', rows: 4, spellcheck: 'false', placeholder: 'GWR1-…' });
+  screen(
+    h('h2', {}, 'Lire le résultat d’un ami'),
+    message && h('p', { class: 'bandeau', role: 'alert' }, message),
+    h('p', {}, h('label', { for: 'resultat' }, 'Colle ici le message reçu'), text),
+    h('div', { class: 'actions' },
+      h('button', { class: 'principal', onclick: async () => {
+        let r;
+        try { r = decodeResult(text.value); } catch (e) { return readResult((e as Error).message); }
+        const sent = await getSentGame(r.gameId);
+        if (!sent) return readResult('Cette partie n’a pas été envoyée depuis ce téléphone.');
+        // Les scores sont recalculés ici à partir des points posés : on ne se fie pas à ceux du code.
+        const scores = sent.answers.map((a, i) => (r.guesses[i] ? roundScore(distanceKm(r.guesses[i], a)) : 0));
+        const total = scores.reduce((s, x) => s + x, 0);
+        screen(
+          h('h2', {}, `Résultat de ${r.player}`),
+          h('p', { class: 'total' }, `${nf(total)} / ${nf(MAX_SCORE * sent.answers.length)}`),
+          h('ol', { class: 'bilan' }, ...sent.answers.map((a, i) => {
+            const g = r.guesses[i];
+            return h('li', {}, g ? `${formatDistance(distanceKm(g, a))} · ${nf(scores[i])} points` : 'pas de réponse');
+          })),
+          h('div', { class: 'actions' }, h('button', { onclick: () => home() }, 'Accueil')),
+        );
+      } }, 'Voir le résultat'),
+      h('button', { onclick: () => home() }, 'Retour'),
+    ),
+  );
 }
 
 // ---------- Réglages ----------

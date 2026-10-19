@@ -36,11 +36,12 @@ function shuffle<T>(items: T[]): T[] {
 /**
  * Prépare une partie. Le cadrage de départ vient de toute la sélection
  * (voyage, pays ou tout), pas des seules photos tirées, pour ne rien révéler.
+ * `ordered` garde l'ordre donné (partie reçue d'un ami : mêmes photos, même ordre).
  */
-export function newGame(pool: GamePhoto[], players: string[], rounds = DEFAULT_ROUNDS): Game {
+export function newGame(pool: GamePhoto[], players: string[], rounds = DEFAULT_ROUNDS, ordered = false): Game {
   if (!pool.length) throw new Error('Aucune photo à jouer');
   if (!players.length) throw new Error('Aucun joueur');
-  const picked = shuffle(pool).slice(0, Math.max(1, rounds));
+  const picked = (ordered ? pool : shuffle(pool)).slice(0, Math.max(1, rounds));
   return {
     players,
     rounds: picked,
