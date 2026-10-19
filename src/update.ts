@@ -1,6 +1,10 @@
 /**
  * Mises à jour acceptées explicitement (idees-securite.md, idée 2) : une
- * nouvelle version publiée n'est jamais installée sans l'accord de l'utilisateur.
+ * nouvelle version publiée n'est pas installée sans l'accord de l'utilisateur.
+ * Limite : cela n'évite qu'une mise à jour involontaire. Une publication
+ * malveillante pourrait remettre skipWaiting() dans son propre sw.js et
+ * s'installer seule ; la vraie protection est en amont (idée 1 : compte
+ * GitHub sécurisé, branche main protégée, tests obligatoires avant publication).
  */
 
 /** Page publique qui liste les changements de chaque version. */
