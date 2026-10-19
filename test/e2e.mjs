@@ -113,9 +113,22 @@ try {
   await page.locator('.barre .principal').click();
   await page.getByText('Fin de partie').waitFor();
 
-  // Tout supprimer (appui long de 2 s).
+  // Test du chiffrement : clé non exportable conservée après rechargement, puis nettoyage.
   await page.getByText('Accueil').click();
   await page.getByText('Réglages et confidentialité').click();
+  await page.getByRole('button', { name: 'Tester le chiffrement' }).click();
+  await page.getByRole('button', { name: 'Lancer le test' }).click();
+  await page.getByText('Étape 1 réussie').waitFor();
+  await page.reload();
+  await page.getByText('Réglages et confidentialité').click();
+  await page.getByRole('button', { name: 'Tester le chiffrement' }).click();
+  await page.getByText('Images déchiffrées après réouverture : oui').waitFor();
+  await page.getByText('Clé impossible à extraire : oui').waitFor();
+  await page.getByRole('button', { name: 'Nettoyer le test' }).click();
+  await page.getByRole('button', { name: 'Lancer le test' }).waitFor();
+  await page.getByRole('button', { name: 'Retour' }).click();
+
+  // Tout supprimer (appui long de 2 s).
   await page.getByRole('button', { name: 'Tout supprimer' }).click();
   const btn = page.getByText('Maintenir 2 secondes');
   const box = await btn.boundingBox();

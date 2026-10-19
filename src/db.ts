@@ -1,3 +1,4 @@
+import { cleanTest } from './cryptotest';
 import type { Photo } from './photos';
 
 const DB_NAME = 'guesswhere';
@@ -113,6 +114,7 @@ export async function wipeEverything(): Promise<void> {
     // Une autre fenêtre tient la base : on ne prétend pas avoir tout supprimé.
     req.onblocked = () => reject(new Error('Base de données ouverte ailleurs'));
   });
+  await cleanTest();
   try { localStorage.clear(); sessionStorage.clear(); } catch { /* stockage indisponible */ }
   if ('caches' in window) {
     for (const key of await caches.keys()) await caches.delete(key);
