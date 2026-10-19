@@ -1,5 +1,5 @@
 import './style.css';
-import { addPhoto, allPhotos, deleteReceivedGame, purgeExpiredReceived, receivedGames, requestPersistence, saveReceivedGame, wipeEverything, type ReceivedGame } from './db';
+import { addPhoto, allPhotos, deleteReceivedGame, purgeExpiredReceived, receivedGames, requestPersistence, saveReceivedGame, wipeEverything, wipePhotos, type ReceivedGame } from './db';
 import { advance, currentPhoto, newGame, submitGuess, totals, DEFAULT_ROUNDS, type Game } from './game';
 import { formatDistance, type LatLng } from './geo';
 import { GameMap, resetSatellite } from './map';
@@ -461,7 +461,8 @@ async function settings() {
     h('div', { class: 'actions' },
       h('button', { onclick: () => gpsTest() }, 'Tester la lecture GPS'),
       h('button', { onclick: () => cryptoTest() }, 'Tester le chiffrement'),
-      h('button', { class: 'danger', onclick: () => confirmWipe(photos.length, tripsOf(photos).length) }, 'Tout supprimer'),
+      h('button', { class: 'danger', onclick: () => confirmWipe(photos.length, tripsOf(photos).length, false) }, 'Supprimer les photos'),
+      h('button', { class: 'danger', onclick: () => confirmWipe(photos.length, tripsOf(photos).length, true) }, 'Tout supprimer'),
       h('button', { onclick: () => home() }, 'Retour'),
     ),
   );
@@ -516,21 +517,24 @@ function satelliteSection(): HTMLElement {
   return section;
 }
 
-function confirmWipe(count: number, trips: number) {
+/** Suppression définitive, des photos seules ou de tout (vue satellite et cache hors ligne compris). */
+function confirmWipe(count: number, trips: number, all: boolean) {
+  const what = all ? 'tout supprimer' : 'supprimer les photos';
   const wipe = async () => {
     try {
-      await wipeEverything();
+      await (all ? wipeEverything() : wipePhotos());
     } catch {
       home('La suppression n’a pas pu se terminer. Ferme les autres fenêtres de GuessWhere, puis réessaie.');
       return;
     }
     photoUrls.forEach((u) => URL.revokeObjectURL(u));
     photoUrls.clear();
-    resetSatellite();
-    home(`Tout a été supprimé (${plural(count, 'photo', 'photos')}, ${plural(trips, 'voyage', 'voyages')}).`);
+    if (all) resetSatellite();
+    const bilan = `${plural(count, 'photo', 'photos')}, ${plural(trips, 'voyage', 'voyages')}`;
+    home(all ? `Tout a été supprimé (${bilan}).` : `Photos supprimées (${bilan}). La vue satellite est gardée.`);
   };
   // Appui long de 2 s au doigt…
-  const hold = h('button', { class: 'danger maintenir' }, 'Maintenir 2 secondes pour tout supprimer');
+  const hold = h('button', { class: 'danger maintenir' }, `Maintenir 2 secondes pour ${what}`);
   let timer: number | undefined;
   const start = (e: PointerEvent) => {
     e.preventDefault();
@@ -544,16 +548,20 @@ function confirmWipe(count: number, trips: number) {
   hold.addEventListener('pointercancel', cancel);
   hold.addEventListener('contextmenu', (e) => e.preventDefault());
   // …ou deux confirmations successives, pour VoiceOver et le clavier, qui ne savent pas maintenir.
-  const yes = h('button', { class: 'danger', hidden: true, onclick: wipe }, 'Oui, tout supprimer');
+  const yes = h('button', { class: 'danger', hidden: true, onclick: wipe }, `Oui, ${what}`);
   const alt = h('button', { onclick: () => { alt.hidden = true; yes.hidden = false; yes.focus(); } }, 'Confirmer sans maintenir');
   screen(
-    h('h2', {}, 'Tout supprimer ?'),
+    h('h2', {}, all ? 'Tout supprimer ?' : 'Supprimer les photos ?'),
     h('p', {}, 'Seront effacés de ce téléphone :'),
     h('ul', { class: 'bilan' },
       h('li', {}, `${plural(count, 'photo', 'photos')} et leurs positions`),
       h('li', {}, plural(trips, 'voyage', 'voyages')),
-      h('li', {}, 'les réglages et le cache hors ligne'),
+      h('li', {}, 'les parties reçues d’amis'),
+      all
+        ? h('li', {}, 'la vue satellite, les réglages et le cache hors ligne')
+        : null,
     ),
+    all ? null : h('p', {}, 'La vue satellite et l’app hors ligne restent installées : elles ne contiennent aucune donnée personnelle.'),
     h('p', {}, 'C’est définitif.'),
     h('div', { class: 'actions' }, hold, alt, yes, h('button', { onclick: () => settings() }, 'Annuler')),
   );

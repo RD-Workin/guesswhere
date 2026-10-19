@@ -97,12 +97,8 @@ export async function requestPersistence(): Promise<boolean> {
   }
 }
 
-/**
- * Efface tout ce que l'app a stocké sur le téléphone : photos, réglages,
- * cache hors ligne et service worker. Aucune donnée n'existe ailleurs
- * tant que le partage par lien n'est pas en place.
- */
-export async function wipeEverything(): Promise<void> {
+/** Supprime la base des photos et des parties reçues, sans rien laisser derrière. */
+async function deleteDatabase(): Promise<void> {
   if (dbPromise) {
     (await dbPromise).close();
     dbPromise = undefined;
@@ -115,7 +111,26 @@ export async function wipeEverything(): Promise<void> {
     req.onblocked = () => reject(new Error('Base de données ouverte ailleurs'));
   });
   await cleanTest();
-  try { localStorage.clear(); sessionStorage.clear(); } catch { /* stockage indisponible */ }
+  try { sessionStorage.clear(); } catch { /* stockage indisponible */ }
+}
+
+/**
+ * Efface les photos seulement : copies, positions, dates, voyages, parties
+ * reçues et base du test de chiffrement. Garde la vue satellite et l'app
+ * hors ligne, qui ne contiennent aucune donnée personnelle (le même fichier
+ * pour tout le monde, et le code de l'app).
+ */
+export async function wipePhotos(): Promise<void> {
+  await deleteDatabase();
+}
+
+/**
+ * Efface tout ce que l'app a stocké sur le téléphone : photos, réglages,
+ * cache hors ligne, vue satellite et service worker.
+ */
+export async function wipeEverything(): Promise<void> {
+  await deleteDatabase();
+  try { localStorage.clear(); } catch { /* stockage indisponible */ }
   if ('caches' in window) {
     for (const key of await caches.keys()) await caches.delete(key);
   }
