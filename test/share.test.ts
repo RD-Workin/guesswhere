@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeResult, encodeResult, newShareCode, normalizeCode, packGame, unpackGame } from '../src/share';
+import { newShareCode, normalizeCode, packGame, unpackGame } from '../src/share';
 
 const jpeg = (n: number) => new Blob([new Uint8Array([0xff, 0xd8, n, n, 0xff, 0xd9])], { type: 'image/jpeg' });
 
@@ -37,18 +37,5 @@ describe('expiration', () => {
     const file = await packGame({ id: 'x', createdAt: 0, expiresAt: 1000, from: 'R', rounds: [{ image: jpeg(1), lat: 1, lng: 1 }] }, code);
     await expect(unpackGame(file, code, 500)).resolves.toBeTruthy();
     await expect(unpackGame(file, code, 2000)).rejects.toThrow('expiré');
-  });
-});
-
-describe('code de résultat', () => {
-  it('aller-retour, même collé dans un message', () => {
-    const code = encodeResult({ gameId: 'abc', player: 'Léa', guesses: [{ lat: 35.123456, lng: 139.5, score: 4057 }] });
-    expect(code).toMatch(/^GWR1-[A-Za-z0-9_-]+$/);
-    const r = decodeResult(`Mon score : ${code} 😀`);
-    expect(r).toEqual({ gameId: 'abc', player: 'Léa', guesses: [{ lat: 35.1235, lng: 139.5, score: 4057 }] });
-  });
-  it('refuse un texte quelconque', () => {
-    expect(() => decodeResult('bonjour')).toThrow('Aucun code');
-    expect(() => decodeResult('GWR1-zzzz')).toThrow('illisible');
   });
 });

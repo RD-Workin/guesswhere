@@ -1,6 +1,6 @@
 /**
- * Format du fichier de partage entre amis (.guesswhere), commun aux modes
- * « chacun son tour » et « en direct ».
+ * Format du fichier de partage entre amis (.guesswhere) : chacun joue les
+ * mêmes photos sur son téléphone et voit son score à la fin.
  *
  *   "GWH1" | IV (12 octets) | AES-GCM-256( longueur de l'en-tête (4 octets) | en-tête JSON | images JPEG bout à bout )
  *
@@ -27,7 +27,7 @@ export interface SharedRound {
 }
 
 export interface SharedGame {
-  id: string; // identifiant aléatoire de la partie, repris dans le code de résultat
+  id: string; // identifiant aléatoire de la partie
   createdAt: number;
   expiresAt: number;
   from: string;
@@ -110,39 +110,4 @@ export async function unpackGame(file: Blob, code: string, now = Date.now()): Pr
     return { image, lat: r.lat, lng: r.lng };
   });
   return { id: header.id, createdAt: header.createdAt, expiresAt: header.expiresAt, from: header.from, rounds };
-}
-
-// ---------- Code de résultat (« chacun son tour ») ----------
-//
-// L'ami joue la partie reçue, puis renvoie par Messages un court code texte.
-// Il ne contient que le prénom, les points posés et les scores, rattachés à
-// l'identifiant de la partie : jamais les vraies positions.
-
-const RESULT_PREFIX = 'GWR1-';
-
-export interface GameResult {
-  gameId: string;
-  player: string;
-  guesses: { lat: number; lng: number; score: number }[];
-}
-
-const toB64url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const fromB64url = (s: string) =>
-  Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-
-export function encodeResult(r: GameResult): string {
-  const compact = { g: r.gameId, n: r.player, r: r.guesses.map((g) => [+g.lat.toFixed(4), +g.lng.toFixed(4), g.score]) };
-  return RESULT_PREFIX + toB64url(new TextEncoder().encode(JSON.stringify(compact)));
-}
-
-export function decodeResult(text: string): GameResult {
-  const match = text.match(/GWR1-([A-Za-z0-9_-]+)/);
-  if (!match) throw new Error('Aucun code de résultat GuessWhere dans ce texte');
-  try {
-    const c = JSON.parse(new TextDecoder().decode(fromB64url(match[1]))) as { g: string; n: string; r: [number, number, number][] };
-    return { gameId: String(c.g), player: String(c.n).slice(0, 20), guesses: c.r.map(([lat, lng, score]) => ({ lat: +lat, lng: +lng, score: Math.max(0, Math.min(5000, Math.round(+score))) })) };
-  } catch {
-    throw new Error('Code de résultat illisible');
-  }
 }

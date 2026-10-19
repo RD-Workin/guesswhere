@@ -1,5 +1,5 @@
 // Tout le jeu sans connexion, une fois l'app chargée une première fois :
-// import, partie solo, duel, envoi à un ami, partie reçue, lecture du résultat.
+// import, partie solo, duel, envoi à un ami, partie reçue (interrompue puis reprise).
 import { chromium, devices } from 'playwright-core';
 import { spawn } from 'child_process';
 import { readFileSync } from 'fs';
@@ -24,11 +24,11 @@ const playRound = async (label, x, y) => {
 };
 
 try {
-  // Première visite en ligne : le service worker précharge tout.
+  // Une seule visite en ligne (bug B8) : le service worker précharge tout à l'installation.
   await page.goto(`http://localhost:${PORT}/`);
   await page.evaluate(() => navigator.serviceWorker.ready);
-  await page.reload();
-  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  const cached = await page.evaluate(async () => (await Promise.all((await caches.keys()).map(async (k) => (await (await caches.open(k)).keys()).length))).reduce((a, b) => a + b, 0));
+  assert.ok(cached >= 7, `précache incomplet : ${cached} fichiers`);
 
   // Coupure réseau.
   await ctx.setOffline(true);
@@ -97,20 +97,12 @@ try {
   await page.getByText('Reprendre la partie de Romain').click();
   await playRound('Manche 2/2', 200, 160);
   await page.locator('.barre .principal').click();
-  await page.getByText('Renvoie ce code à Romain').waitFor();
-  const result = await page.locator('.code').innerText();
-  assert.match(result, /^GWR1-/);
+  await page.getByText('Partie envoyée par Romain').waitFor();
+  assert.match(await page.locator('.total').innerText(), /^Léa : [\d\u202f]+ \/ 10\u202f000$/);
   await page.getByText('Accueil').click();
   assert.equal(await page.getByText('Reprendre la partie de Romain').count(), 0, 'partie reçue effacée à la fin');
   const leftover = await page.evaluate(() => new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; const c = db.transaction('recus').objectStore('recus').count(); c.onsuccess = () => { db.close(); r(c.result); }; }; }));
   assert.equal(leftover, 0);
-
-  // Romain lit le résultat.
-  await page.getByText('Lire le résultat d’un ami').click();
-  await page.locator('#resultat').fill(`Voilà ! ${result}`);
-  await page.getByText('Voir le résultat').click();
-  await page.getByText('Résultat de Léa').waitFor();
-  assert.equal(await page.locator('.bilan li').count(), 2);
 
   assert.deepEqual(problems.filter((p) => !p.includes('ERR_INTERNET_DISCONNECTED')), [], 'erreurs hors ligne');
   console.log('E2E HORS LIGNE OK');
