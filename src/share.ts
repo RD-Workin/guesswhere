@@ -1,0 +1,97 @@
+/**
+ * Format du fichier de partage entre amis (.guesswhere), commun aux modes
+ * « chacun son tour » et « en direct ».
+ *
+ *   "GWH1" | IV (12 octets) | AES-GCM-256( longueur de l'en-tête (4 octets) | en-tête JSON | images JPEG bout à bout )
+ *
+ * La clé (128 bits aléatoires, dérivée en clé AES de 256 bits par HKDF) n'est
+ * jamais dans le fichier : elle est transmise par un autre canal, sous forme
+ * de 26 caractères. Les images sont celles déjà nettoyées à l'import (D4).
+ */
+
+const MAGIC = 'GWH1';
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans I, O, 0, 1 : pas de confusion à la lecture
+
+export interface SharedRound {
+  image: Blob;
+  lat: number;
+  lng: number;
+}
+
+export interface SharedGame {
+  createdAt: number;
+  from: string;
+  rounds: SharedRound[];
+}
+
+interface Header {
+  createdAt: number;
+  from: string;
+  rounds: { lat: number; lng: number; size: number }[];
+}
+
+export function newShareCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(17)); // 26 caractères × 5 bits = 130 bits ≥ 128
+  let bits = 0, value = 0, out = '';
+  for (const b of bytes) {
+    value = (value << 8) | b;
+    bits += 8;
+    while (bits >= 5 && out.length < 26) {
+      out += ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  return out;
+}
+
+/** Normalise un code saisi à la main : majuscules, sans espaces ni tirets. */
+export function normalizeCode(code: string): string {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+async function keyFrom(code: string): Promise<CryptoKey> {
+  const norm = normalizeCode(code);
+  if (norm.length !== 26 || [...norm].some((c) => !ALPHABET.includes(c))) throw new Error('Code invalide');
+  const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(norm), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('guesswhere-partage-v1'), info: new Uint8Array() },
+    raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+  );
+}
+
+export async function packGame(game: SharedGame, code: string): Promise<Blob> {
+  const images = await Promise.all(game.rounds.map(async (r) => new Uint8Array(await r.image.arrayBuffer())));
+  const header: Header = {
+    createdAt: game.createdAt,
+    from: game.from,
+    rounds: game.rounds.map((r, i) => ({ lat: r.lat, lng: r.lng, size: images[i].length })),
+  };
+  const json = new TextEncoder().encode(JSON.stringify(header));
+  const len = new Uint8Array(4);
+  new DataView(len.buffer).setUint32(0, json.length);
+  const plain = new Uint8Array(await new Blob([len, json, ...images]).arrayBuffer());
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await keyFrom(code), plain);
+  return new Blob([new TextEncoder().encode(MAGIC), iv, cipher], { type: 'application/octet-stream' });
+}
+
+export async function unpackGame(file: Blob, code: string): Promise<SharedGame> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (new TextDecoder().decode(bytes.subarray(0, 4)) !== MAGIC) throw new Error('Ce fichier n’est pas une partie GuessWhere');
+  const iv = bytes.subarray(4, 16);
+  let plain: Uint8Array;
+  try {
+    plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, await keyFrom(code), bytes.subarray(16)));
+  } catch {
+    throw new Error('Code incorrect ou fichier abîmé');
+  }
+  const len = new DataView(plain.buffer, plain.byteOffset).getUint32(0);
+  const header = JSON.parse(new TextDecoder().decode(plain.subarray(4, 4 + len))) as Header;
+  let offset = 4 + len;
+  const rounds = header.rounds.map((r) => {
+    const image = new Blob([plain.slice(offset, offset + r.size)], { type: 'image/jpeg' });
+    offset += r.size;
+    return { image, lat: r.lat, lng: r.lng };
+  });
+  return { createdAt: header.createdAt, from: header.from, rounds };
+}
