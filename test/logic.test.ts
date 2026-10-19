@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+import { distanceKm, formatDistance } from '../src/geo';
+import { gameScaleKm, roundScore, MAX_SCORE, MIN_SCALE_KM } from '../src/score';
+import { groupIntoTrips } from '../src/trips';
+import { advance, newGame, roundComplete, submitGuess, totals } from '../src/game';
+import { countryAt } from '../src/countries';
+
+const near = (actual: number, expected: number, pct = 0.5) =>
+  expect(Math.abs(actual - expected) / expected * 100).toBeLessThanOrEqual(pct);
+
+describe('distance (grille du fil « Chasse aux bugs »)', () => {
+  it('même point', () => expect(distanceKm({ lat: 48.8566, lng: 2.3522 }, { lat: 48.8566, lng: 2.3522 })).toBe(0));
+  it('ville', () => near(distanceKm({ lat: 48.8584, lng: 2.2945 }, { lat: 48.853, lng: 2.3499 }), 4.1, 3));
+  it('pays voisins', () => near(distanceKm({ lat: 48.8566, lng: 2.3522 }, { lat: 51.5074, lng: -0.1278 }), 344));
+  it('continents', () => near(distanceKm({ lat: 48.8566, lng: 2.3522 }, { lat: 40.7128, lng: -74.006 }), 5837));
+  it('antiméridien', () => near(distanceKm({ lat: -17.7, lng: 178 }, { lat: -13.8, lng: -172 }), 1100, 5));
+  it('pôle', () => near(distanceKm({ lat: 89.9, lng: 0 }, { lat: 89.9, lng: 180 }), 22, 2));
+  it('antipodes', () => near(distanceKm({ lat: 0, lng: 0 }, { lat: 0, lng: 180 }), 20015));
+  it('format français', () => {
+    expect(formatDistance(0.42)).toBe('420 m');
+    expect(formatDistance(2.44)).toBe('2,4 km');
+    expect(formatDistance(1830)).toBe('1 830 km');
+  });
+});
+
+describe('score', () => {
+  it('borné, monotone, sans NaN', () => {
+    let prev = Infinity;
+    for (let d = 0; d <= 20100; d += 37) {
+      const s = roundScore(d, 20000);
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThanOrEqual(MAX_SCORE);
+      expect(s).toBeLessThanOrEqual(prev);
+      prev = s;
+    }
+    expect(roundScore(NaN, 10)).toBe(0);
+  });
+  it("s'adapte à l'échelle de la partie", () => {
+    const paris = 15, monde = 18000;
+    expect(roundScore(5, paris)).toBeLessThan(200); // 5 km d'erreur dans Paris : presque rien
+    expect(roundScore(5, monde)).toBe(MAX_SCORE); // 5 km sur un tour du monde : parfait
+    expect(roundScore(1, paris)).toBeGreaterThan(2000);
+    expect(roundScore(1000, monde)).toBeGreaterThan(2500);
+  });
+  it('échelle plancher pour une seule photo', () => expect(gameScaleKm([{ lat: 1, lng: 1 }])).toBe(MIN_SCALE_KM));
+});
+
+describe('voyages', () => {
+  const day = 86400000;
+  it('coupe après 3 jours ou 500 km', () => {
+    const p = (takenAt: number, lat: number, lng: number) => ({ takenAt, lat, lng });
+    const trips = groupIntoTrips([
+      p(0, 48.85, 2.35), p(day, 48.86, 2.35), // Paris
+      p(2 * day, 35.68, 139.69), // Tokyo le lendemain : > 500 km
+      p(10 * day, 35.68, 139.7), // Tokyo une semaine plus tard : > 3 jours
+    ]);
+    expect(trips.map((t) => t.length)).toEqual([2, 1, 1]);
+  });
+});
+
+describe('partie', () => {
+  const pool = [
+    { id: 'a', lat: 48.8584, lng: 2.2945 },
+    { id: 'b', lat: 48.853, lng: 2.3499 },
+    { id: 'c', lat: 48.8867, lng: 2.3431 },
+  ];
+  it('duel : alternance puis manche suivante', () => {
+    const g = newGame(pool, ['Léa', 'Tom'], 2);
+    submitGuess(g, g.rounds[0]);
+    expect(roundComplete(g)).toBe(false);
+    expect(advance(g)).toBe(true);
+    expect(g.player).toBe(1);
+    submitGuess(g, { lat: 0, lng: 0 });
+    expect(advance(g)).toBe(true);
+    expect([g.round, g.player]).toEqual([1, 0]);
+    submitGuess(g, g.rounds[1]);
+    advance(g);
+    submitGuess(g, g.rounds[1]);
+    expect(advance(g)).toBe(false);
+    expect(totals(g)).toEqual([2 * MAX_SCORE, MAX_SCORE]);
+  });
+  it('pas plus de manches que de photos', () => expect(newGame(pool, ['A'], 10).rounds).toHaveLength(3));
+});
+
+describe('pays hors ligne', () => {
+  it('trouve le pays en français', () => {
+    expect(countryAt({ lat: 35.6586, lng: 139.7454 })?.name).toBe('Japon');
+    expect(countryAt({ lat: -22.9519, lng: -43.2105 })?.name).toBe('Brésil');
+    expect(countryAt({ lat: 48.8584, lng: 2.2945 })?.id).toBe('FR');
+  });
+  it('photo sur la côte', () => expect(countryAt({ lat: 43.2951, lng: 5.3622 })?.id).toBe('FR')); // Vieux-Port, Marseille
+  it('Tchoukotka, à l’ouest de 180°', () => expect(countryAt({ lat: 66.0, lng: -172.0 })?.id).toBe('RU'));
+  it('pleine mer', () => expect(countryAt({ lat: 0, lng: -30 })).toBeUndefined());
+});
+
+describe('fond de carte', () => {
+  it("aucune arête ne traverse l'antiméridien", async () => {
+    const { worldGeoJson } = await import('../src/countries');
+    let long = 0;
+    for (const f of worldGeoJson.features) {
+      if (f.id === '010') continue; // Antarctique : contour polaire
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const r of polys.flat()) for (let i = 1; i < r.length; i++) if (Math.abs(r[i][0] - r[i - 1][0]) > 180) long++;
+    }
+    expect(long).toBe(0);
+  });
+});

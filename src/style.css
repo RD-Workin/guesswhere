@@ -1,0 +1,83 @@
+:root {
+  --accent: #0a84ff;
+  --danger: #ff3b30;
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --muted: #6c6c70;
+  color-scheme: light dark;
+  font: 17px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --accent: #409cff; --bg: #000; --surface: #1c1c1e; --text: #f2f2f7; --muted: #98989f; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+body { overscroll-behavior: none; }
+#app { min-height: 100dvh; }
+
+.ecran {
+  max-width: 520px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px)
+           calc(env(safe-area-inset-bottom) + 16px) calc(env(safe-area-inset-left) + 16px);
+}
+h1 { font-size: 34px; margin: 8px 0 0; }
+h2 { font-size: 28px; margin: 8px 0 16px; }
+h3 { font-size: 20px; margin: 16px 0 8px; }
+h3 small { font-weight: normal; color: var(--muted); font-size: 15px; }
+.badge { color: var(--muted); font-size: 15px; }
+.badge::before { content: '🔒 '; }
+.bandeau, .info { background: var(--surface); border-radius: 12px; padding: 12px 14px; }
+.bandeau { border-left: 4px solid var(--accent); }
+
+.actions { display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
+button, .bouton {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 50px; padding: 0 20px; border: 0; border-radius: 14px;
+  font: inherit; font-weight: 600; background: var(--surface); color: var(--accent);
+  cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+button.principal, .bouton.principal { background: var(--accent); color: #fff; min-height: 56px; }
+button.discret { background: transparent; color: var(--muted); }
+button.danger { background: var(--danger); color: #fff; }
+button.danger.charge { animation: charge 2s linear forwards; }
+@keyframes charge { from { box-shadow: inset 0 0 0 0 rgba(0,0,0,.35); } to { box-shadow: inset 600px 0 0 0 rgba(0,0,0,.35); } }
+
+label { display: block; color: var(--muted); font-size: 15px; margin-bottom: 4px; }
+input, select { width: 100%; min-height: 44px; font: inherit; padding: 8px 12px; border-radius: 10px; border: 1px solid #c7c7cc; background: var(--surface); color: var(--text); }
+.case { display: flex; align-items: center; gap: 12px; }
+.case input { width: 24px; min-height: 24px; }
+.case label { margin: 0; color: var(--text); font-size: 17px; }
+progress { width: 100%; height: 8px; }
+.bilan { padding-left: 20px; }
+.total { font-size: 22px; font-weight: 600; }
+
+.vignettes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.vignettes img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
+
+/* Écran de manche : photo en haut, carte en bas, barre d'action dans la zone du pouce. */
+.ecran.jeu { max-width: none; padding: 0; height: 100dvh; display: grid; grid-template-rows: 45% 1fr auto; }
+.cadre-photo { background: #000; padding-top: env(safe-area-inset-top); display: flex; min-height: 0; }
+.photo { width: 100%; height: 100%; object-fit: contain; }
+.carte { min-height: 0; }
+.barre {
+  display: flex; align-items: center; gap: 12px; background: var(--surface);
+  padding: 10px calc(env(safe-area-inset-right) + 12px) calc(env(safe-area-inset-bottom) + 10px) calc(env(safe-area-inset-left) + 12px);
+}
+.barre > span, .resultats { flex: 1; font-size: 15px; }
+.resultats { display: flex; flex-direction: column; }
+.resultats span { white-space: nowrap; }
+.barre .principal { flex: 1; }
+.repere {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--c); border: 3px solid #fff;
+  color: #fff; font: 600 13px -apple-system, sans-serif;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+.passage {
+  position: fixed; inset: 0; z-index: 10; background: var(--bg);
+  display: flex; flex-direction: column; justify-content: center; gap: 24px; padding: 32px;
+  font-size: 24px; text-align: center;
+}
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0s !important; transition: none !important; } }
