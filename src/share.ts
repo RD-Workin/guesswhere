@@ -14,6 +14,10 @@
 const MAGIC = 'GWH1';
 /** Nom neutre : il s'affiche en clair dans Messages et AirDrop (ni voyage, ni date). */
 export const SHARE_FILE_NAME = 'partie.guesswhere';
+/** Au plus 15 photos par partie partagée (≈ 3 à 5 Mo). */
+export const MAX_SHARED_PHOTOS = 15;
+/** Durée de vie d'une partie reçue (protection de confort : dépend de l'horloge de l'ami). */
+export const SHARE_TTL_MS = 7 * 24 * 3600 * 1000;
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans I, O, 0, 1 : pas de confusion à la lecture
 
 export interface SharedRound {
@@ -25,6 +29,7 @@ export interface SharedRound {
 export interface SharedGame {
   id: string; // identifiant aléatoire de la partie, repris dans le code de résultat
   createdAt: number;
+  expiresAt: number;
   from: string;
   rounds: SharedRound[];
 }
@@ -32,6 +37,7 @@ export interface SharedGame {
 interface Header {
   id: string;
   createdAt: number;
+  expiresAt: number;
   from: string;
   rounds: { lat: number; lng: number; size: number }[];
 }
@@ -70,6 +76,7 @@ export async function packGame(game: SharedGame, code: string): Promise<Blob> {
   const header: Header = {
     id: game.id,
     createdAt: game.createdAt,
+    expiresAt: game.expiresAt,
     from: game.from,
     rounds: game.rounds.map((r, i) => ({ lat: r.lat, lng: r.lng, size: images[i].length })),
   };
@@ -82,7 +89,7 @@ export async function packGame(game: SharedGame, code: string): Promise<Blob> {
   return new Blob([new TextEncoder().encode(MAGIC), iv, cipher], { type: 'application/octet-stream' });
 }
 
-export async function unpackGame(file: Blob, code: string): Promise<SharedGame> {
+export async function unpackGame(file: Blob, code: string, now = Date.now()): Promise<SharedGame> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (new TextDecoder().decode(bytes.subarray(0, 4)) !== MAGIC) throw new Error('Ce fichier n’est pas une partie GuessWhere');
   const iv = bytes.subarray(4, 16);
@@ -95,13 +102,14 @@ export async function unpackGame(file: Blob, code: string): Promise<SharedGame> 
   }
   const len = new DataView(plain.buffer, plain.byteOffset).getUint32(0);
   const header = JSON.parse(new TextDecoder().decode(plain.subarray(4, 4 + len))) as Header;
+  if (now > header.expiresAt) throw new Error('Cette partie a expiré (plus de 7 jours).');
   let offset = 4 + len;
   const rounds = header.rounds.map((r) => {
     const image = new Blob([plain.slice(offset, offset + r.size)], { type: 'image/jpeg' });
     offset += r.size;
     return { image, lat: r.lat, lng: r.lng };
   });
-  return { id: header.id, createdAt: header.createdAt, from: header.from, rounds };
+  return { id: header.id, createdAt: header.createdAt, expiresAt: header.expiresAt, from: header.from, rounds };
 }
 
 // ---------- Code de résultat (« chacun son tour ») ----------

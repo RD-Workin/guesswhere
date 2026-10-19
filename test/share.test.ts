@@ -13,7 +13,7 @@ describe('fichier de partage chiffré', () => {
 
   it('aller-retour', async () => {
     const code = newShareCode();
-    const file = await packGame({ id: 'abc', createdAt: 1, from: 'Romain', rounds: [{ image: jpeg(1), lat: 35.6586, lng: 139.7454 }, { image: jpeg(2), lat: -22.95, lng: -43.21 }] }, code);
+    const file = await packGame({ id: 'abc', createdAt: 1, expiresAt: Date.now() + 1000, from: 'Romain', rounds: [{ image: jpeg(1), lat: 35.6586, lng: 139.7454 }, { image: jpeg(2), lat: -22.95, lng: -43.21 }] }, code);
     const back = await unpackGame(file, code);
     expect(back.from).toBe('Romain');
     expect(back.id).toBe('abc');
@@ -22,12 +22,21 @@ describe('fichier de partage chiffré', () => {
   });
 
   it('rien de lisible sans le code', async () => {
-    const file = await packGame({ id: 'abc', createdAt: 1, from: 'Romain', rounds: [{ image: jpeg(1), lat: 35.6586, lng: 139.7454 }] }, newShareCode());
+    const file = await packGame({ id: 'abc', createdAt: 1, expiresAt: Date.now() + 1000, from: 'Romain', rounds: [{ image: jpeg(1), lat: 35.6586, lng: 139.7454 }] }, newShareCode());
     const text = new TextDecoder('latin1').decode(await file.arrayBuffer());
     expect(text).not.toContain('Romain');
     expect(text).not.toContain('35.6586');
     await expect(unpackGame(file, newShareCode())).rejects.toThrow('Code incorrect');
     await expect(unpackGame(new Blob(['nimporte']), newShareCode())).rejects.toThrow('pas une partie');
+  });
+});
+
+describe('expiration', () => {
+  it('refuse une partie expirée', async () => {
+    const code = newShareCode();
+    const file = await packGame({ id: 'x', createdAt: 0, expiresAt: 1000, from: 'R', rounds: [{ image: jpeg(1), lat: 1, lng: 1 }] }, code);
+    await expect(unpackGame(file, code, 500)).resolves.toBeTruthy();
+    await expect(unpackGame(file, code, 2000)).rejects.toThrow('expiré');
   });
 });
 

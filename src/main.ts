@@ -1,11 +1,11 @@
 import './style.css';
-import { addPhoto, allPhotos, getSentGame, requestPersistence, saveSentGame, wipeEverything } from './db';
+import { addPhoto, allPhotos, deleteReceivedGame, getSentGame, purgeExpiredReceived, receivedGames, requestPersistence, saveReceivedGame, saveSentGame, wipeEverything, type ReceivedGame } from './db';
 import { advance, currentPhoto, newGame, submitGuess, totals, DEFAULT_ROUNDS, type Game } from './game';
 import { distanceKm, formatDistance, type LatLng } from './geo';
 import { GameMap } from './map';
 import { importFile, readExif, type Photo } from './photos';
 import { MAX_SCORE, roundScore } from './score';
-import { decodeResult, encodeResult, newShareCode, packGame, unpackGame, SHARE_FILE_NAME } from './share';
+import { decodeResult, encodeResult, newShareCode, packGame, unpackGame, MAX_SHARED_PHOTOS, SHARE_FILE_NAME, SHARE_TTL_MS } from './share';
 import { groupIntoTrips } from './trips';
 import { h, nf, plural, screen } from './ui';
 
@@ -60,7 +60,9 @@ function countriesOf(photos: Photo[]): Trip[] {
 // ---------- Accueil ----------
 
 async function home(message?: string) {
+  await purgeExpiredReceived();
   const photos = await allPhotos();
+  const pending = await receivedGames();
   screen(
     h('header', { class: 'titre' }, h('h1', {}, 'GuessWhere'), h('p', { class: 'badge' }, 'Sur ton iPhone uniquement')),
     message && h('p', { class: 'info', role: 'status' }, message),
@@ -80,6 +82,7 @@ async function home(message?: string) {
       photos.length > 0 && h('button', { class: 'principal', onclick: () => setup(photos) }, 'Jouer'),
       canImport() && importButton(),
       photos.length > 0 && h('button', { onclick: () => library(photos) }, 'Mes voyages'),
+      ...pending.map((g) => h('button', { onclick: () => playReceived(g) }, `Reprendre la partie de ${g.from}`)),
       h('button', { onclick: () => openReceived() }, 'Jouer une partie reçue'),
       h('button', { onclick: () => readResult() }, 'Lire le résultat d’un ami'),
       h('button', { class: 'discret', onclick: () => settings() }, 'Réglages et confidentialité'),
@@ -183,7 +186,14 @@ function setup(photos: Photo[]) {
 
 // ---------- Partie ----------
 
-function play(game: Game, pool: Photo[], onFinish?: (game: Game) => void) {
+interface PlayHooks {
+  /** Appelé après chaque réponse validée (sauvegarde de la progression). */
+  onGuess?: (game: Game) => void;
+  /** Remplace l'écran de fin habituel. */
+  onFinish?: (game: Game) => void;
+}
+
+function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
   const byId = new Map(pool.map((p) => [p.id, p]));
   const img = h('img', { class: 'photo', alt: '' });
   const mapEl = h('div', { class: 'carte' });
@@ -227,6 +237,7 @@ function play(game: Game, pool: Photo[], onFinish?: (game: Game) => void) {
 
   const reveal = (at: LatLng) => {
     submitGuess(game, at);
+    hooks.onGuess?.(game);
     map.setTapHandler(undefined);
     const last = game.player === game.players.length - 1;
     if (!last) return handOver();
@@ -268,7 +279,7 @@ function play(game: Game, pool: Photo[], onFinish?: (game: Game) => void) {
 
   const finish = () => {
     map.destroy();
-    if (onFinish) return onFinish(game);
+    if (hooks.onFinish) return hooks.onFinish(game);
     const t = totals(game);
     const max = MAX_SCORE * game.rounds.length;
     const best = Math.max(...t);
@@ -312,18 +323,18 @@ async function shareOut(data: { file?: File; text?: string }): Promise<'partagé
 
 async function sendToFriend(pool: Photo[], rounds: number, from: string) {
   screen(h('h2', {}, 'Préparation…'));
-  const draft = newGame(pool, ['ami'], rounds);
+  const draft = newGame(pool, ['ami'], Math.min(rounds, MAX_SHARED_PHOTOS));
   const byId = new Map(pool.map((p) => [p.id, p]));
   const picked = draft.rounds.map((r) => byId.get(r.id)!);
   const id = crypto.randomUUID();
   const code = newShareCode();
-  const file = new File([await packGame({ id, createdAt: Date.now(), from, rounds: picked.map((p) => ({ image: p.blob, lat: p.lat, lng: p.lng })) }, code)], SHARE_FILE_NAME, { type: 'application/octet-stream' });
+  const file = new File([await packGame({ id, createdAt: Date.now(), expiresAt: Date.now() + SHARE_TTL_MS, from, rounds: picked.map((p) => ({ image: p.blob, lat: p.lat, lng: p.lng })) }, code)], SHARE_FILE_NAME, { type: 'application/octet-stream' });
   await saveSentGame({ id, createdAt: Date.now(), answers: picked.map((p) => ({ lat: p.lat, lng: p.lng })) });
   const status = h('p', { role: 'status' });
   const grouped = code.replace(/(.{5})(?=.)/g, '$1 ');
   screen(
     h('h2', {}, 'Envoyer à un ami'),
-    h('p', {}, `Ces ${plural(picked.length, 'photo', 'photos')} vont partir, sans date ni appareil. Ce qu’on y voit (visages, plaques, adresse) restera visible pour ton ami.`),
+    h('p', {}, `Ces ${plural(picked.length, 'photo', 'photos')} vont partir, sans date ni appareil. Ce qu’on y voit (visages, plaques, adresse) restera visible pour ton ami, qui peut aussi faire une capture d’écran. La partie s’effacera de son app à la fin, ou au bout de 7 jours.`),
     h('div', { class: 'vignettes' }, ...picked.map((p) => h('img', { src: urlFor(p), alt: '' }))),
     h('h3', {}, '1. Le fichier'),
     h('p', {}, 'Il est chiffré : sans le code, personne ne peut l’ouvrir.'),
@@ -358,28 +369,60 @@ function openReceived(message?: string) {
         if (!f) return openReceived('Choisis d’abord le fichier reçu.');
         let shared;
         try { shared = await unpackGame(f, code.value); } catch (e) { return openReceived((e as Error).message); }
-        // Rien n'est enregistré : la partie reçue ne vit qu'en mémoire.
-        const pool: Photo[] = shared.rounds.map((r, i) => ({ id: `${shared.id}-${i}`, blob: r.image, lat: r.lat, lng: r.lng, takenAt: 0, addedAt: 0 }));
-        const player = name.value.trim() || 'Moi';
-        play(newGame(pool, [player], pool.length, true), pool, (game) => {
-          const result = encodeResult({ gameId: shared.id, player, guesses: game.guesses.map((r) => ({ lat: r[0]!.lat, lng: r[0]!.lng, score: r[0]!.score })) });
-          const status = h('p', { role: 'status' });
-          screen(
-            h('h2', {}, 'Fin de partie'),
-            h('p', { class: 'total' }, `${player} : ${nf(totals(game)[0])} / ${nf(MAX_SCORE * game.rounds.length)}`),
-            h('p', {}, `Renvoie ce code à ${shared.from} pour comparer vos scores :`),
-            h('p', { class: 'code' }, result),
-            h('div', { class: 'actions' },
-              h('button', { class: 'principal', onclick: async () => (status.textContent = `Code ${await shareOut({ text: result })}.`) }, 'Envoyer mon résultat'),
-              status,
-              h('button', { onclick: () => home() }, 'Accueil'),
-            ),
-          );
-        });
+        const record: ReceivedGame = { id: shared.id, file: f, code: code.value, from: shared.from, player: name.value.trim() || 'Moi', expiresAt: shared.expiresAt, guesses: [] };
+        await saveReceivedGame(record);
+        screen(
+          h('h2', {}, `Partie de ${shared.from} importée`),
+          h('p', {}, `Tu peux maintenant supprimer le fichier reçu, il ne sert plus : dans Fichiers > Téléchargements s’il est arrivé par AirDrop, ou la pièce jointe dans la conversation Messages. Supprime aussi le message qui contenait le code.`),
+          h('p', { class: 'badge' }, 'La partie s’effacera de l’app à la fin, ou au plus tard dans 7 jours (selon l’horloge de ton téléphone).'),
+          h('div', { class: 'actions' }, h('button', { class: 'principal', onclick: () => playReceived(record) }, 'Commencer')),
+        );
       } }, 'Jouer'),
       h('button', { onclick: () => home() }, 'Retour'),
     ),
   );
+}
+
+/** Lance ou reprend une partie reçue : déchiffrée en mémoire à chaque ouverture. */
+async function playReceived(record: ReceivedGame) {
+  let shared;
+  try {
+    shared = await unpackGame(record.file, record.code);
+  } catch (e) {
+    await deleteReceivedGame(record.id);
+    return home((e as Error).message);
+  }
+  const pool: Photo[] = shared.rounds.map((r, i) => ({ id: `${shared.id}-${i}`, blob: r.image, lat: r.lat, lng: r.lng, takenAt: 0, addedAt: 0 }));
+  const game = newGame(pool, [record.player], pool.length, true);
+  // Reprise : on rejoue les réponses déjà données.
+  for (const g of record.guesses.slice(0, pool.length)) {
+    submitGuess(game, g);
+    if (!advance(game)) break;
+  }
+  play(game, pool, {
+    onGuess: (g) => {
+      record.guesses = g.guesses.flatMap((r) => (r[0] ? [{ lat: r[0].lat, lng: r[0].lng }] : []));
+      saveReceivedGame(record);
+    },
+    onFinish: async (g) => {
+      await deleteReceivedGame(record.id);
+      photoUrls.forEach((u, k) => k.startsWith(shared.id) && (URL.revokeObjectURL(u), photoUrls.delete(k)));
+      const result = encodeResult({ gameId: shared.id, player: record.player, guesses: g.guesses.map((r) => ({ lat: r[0]!.lat, lng: r[0]!.lng, score: r[0]!.score })) });
+      const status = h('p', { role: 'status' });
+      screen(
+        h('h2', {}, 'Fin de partie'),
+        h('p', { class: 'total' }, `${record.player} : ${nf(totals(g)[0])} / ${nf(MAX_SCORE * g.rounds.length)}`),
+        h('p', {}, `Renvoie ce code à ${shared.from} pour comparer vos scores :`),
+        h('p', { class: 'code' }, result),
+        h('p', { class: 'badge' }, 'La partie et ses photos ont été effacées de l’app.'),
+        h('div', { class: 'actions' },
+          h('button', { class: 'principal', onclick: async () => (status.textContent = `Code ${await shareOut({ text: result })}.`) }, 'Envoyer mon résultat'),
+          status,
+          h('button', { onclick: () => home() }, 'Accueil'),
+        ),
+      );
+    },
+  });
 }
 
 function readResult(message?: string) {

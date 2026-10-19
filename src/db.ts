@@ -1,9 +1,10 @@
 import type { Photo } from './photos';
 
 const DB_NAME = 'guesswhere';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const PHOTOS = 'photos';
 const SENT = 'envois';
+const RECEIVED = 'recus';
 
 let dbPromise: Promise<IDBDatabase> | undefined;
 
@@ -16,6 +17,7 @@ function open(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains(PHOTOS)) db.createObjectStore(PHOTOS, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(SENT)) db.createObjectStore(SENT, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(RECEIVED)) db.createObjectStore(RECEIVED, { keyPath: 'id' });
     };
     req.onsuccess = () => {
       // Une autre fenêtre demande la suppression : on libère la base.
@@ -54,6 +56,38 @@ export async function saveSentGame(g: SentGame): Promise<void> {
 
 export async function getSentGame(id: string): Promise<SentGame | undefined> {
   return done((await store('readonly', SENT)).get(id) as IDBRequest<SentGame | undefined>);
+}
+
+/**
+ * Partie reçue d'un ami, gardée chiffrée avec son code jusqu'à la fin de la
+ * partie ou jusqu'à l'expiration, pour pouvoir la reprendre (securite-rgpd.md §16 bis).
+ * Les photos ne sont déchiffrées qu'en mémoire, à chaque ouverture.
+ */
+export interface ReceivedGame {
+  id: string;
+  file: Blob; // fichier chiffré tel que reçu
+  code: string;
+  from: string;
+  player: string;
+  expiresAt: number;
+  guesses: { lat: number; lng: number }[]; // réponses déjà données, dans l'ordre
+}
+
+export async function saveReceivedGame(g: ReceivedGame): Promise<void> {
+  await done((await store('readwrite', RECEIVED)).put(g));
+}
+
+export async function receivedGames(): Promise<ReceivedGame[]> {
+  return done((await store('readonly', RECEIVED)).getAll() as IDBRequest<ReceivedGame[]>);
+}
+
+export async function deleteReceivedGame(id: string): Promise<void> {
+  await done((await store('readwrite', RECEIVED)).delete(id));
+}
+
+/** Efface les parties reçues expirées (appelé à chaque ouverture de l'app). */
+export async function purgeExpiredReceived(now = Date.now()): Promise<void> {
+  for (const g of await receivedGames()) if (now > g.expiresAt) await deleteReceivedGame(g.id);
 }
 
 export async function countSentGames(): Promise<number> {

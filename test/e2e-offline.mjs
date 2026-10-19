@@ -86,14 +86,24 @@ try {
   await page.locator('#code').fill(code.toLowerCase().replace(/(.{5})/g, '$1 '));
   await page.locator('#prenom').fill('Léa');
   await page.getByRole('button', { name: 'Jouer', exact: true }).click();
+  await page.getByText('Partie de Romain importée').waitFor();
+  await page.getByText('Fichiers > Téléchargements', { exact: false }).waitFor();
+  await page.getByText('Commencer').click();
   await playRound('Manche 1/2', 120, 100);
-  await page.locator('.barre .principal').click();
+  // L'ami ferme l'app en cours de partie, puis reprend où il en était.
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: 'Quitter la partie' }).click();
+  await page.reload();
+  await page.getByText('Reprendre la partie de Romain').click();
   await playRound('Manche 2/2', 200, 160);
   await page.locator('.barre .principal').click();
   await page.getByText('Renvoie ce code à Romain').waitFor();
   const result = await page.locator('.code').innerText();
   assert.match(result, /^GWR1-/);
   await page.getByText('Accueil').click();
+  assert.equal(await page.getByText('Reprendre la partie de Romain').count(), 0, 'partie reçue effacée à la fin');
+  const leftover = await page.evaluate(() => new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; const c = db.transaction('recus').objectStore('recus').count(); c.onsuccess = () => { db.close(); r(c.result); }; }; }));
+  assert.equal(leftover, 0);
 
   // Romain lit le résultat.
   await page.getByText('Lire le résultat d’un ami').click();
