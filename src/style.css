@@ -1,6 +1,7 @@
 :root {
-  --accent: #0a84ff;
-  --danger: #ff3b30;
+  --accent: #0064d2; /* texte et liens */
+  --accent-fill: #0064d2; /* fond des boutons pleins : 5,6:1 avec du blanc */
+  --danger: #d70015; /* 5,4:1 avec du blanc */
   --bg: #f2f2f7;
   --surface: #ffffff;
   --text: #1c1c1e;
@@ -39,9 +40,11 @@ button, .bouton {
   font: inherit; font-weight: 600; background: var(--surface); color: var(--accent);
   cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
 }
-button.principal, .bouton.principal { background: var(--accent); color: #fff; min-height: 56px; }
+button.principal, .bouton.principal { background: var(--accent-fill); color: #fff; min-height: 56px; }
 button.discret { background: transparent; color: var(--muted); }
 button.danger { background: var(--danger); color: #fff; }
+/* Appui long : pas de loupe ni de menu iOS pendant les 2 s. */
+button.maintenir { -webkit-touch-callout: none; touch-action: none; }
 button.danger.charge { animation: charge 2s linear forwards; }
 @keyframes charge { from { box-shadow: inset 0 0 0 0 rgba(0,0,0,.35); } to { box-shadow: inset 600px 0 0 0 rgba(0,0,0,.35); } }
 
@@ -67,8 +70,24 @@ progress { width: 100%; height: 8px; }
   padding: 10px calc(env(safe-area-inset-right) + 12px) calc(env(safe-area-inset-bottom) + 10px) calc(env(safe-area-inset-left) + 12px);
 }
 .barre > span, .resultats { flex: 1; font-size: 15px; }
+.consigne { color: var(--muted); }
 .resultats { display: flex; flex-direction: column; }
-.resultats span { white-space: nowrap; }
+.resultats { gap: 6px; }
+.joueur { display: grid; grid-template-columns: 28px 1fr; column-gap: 8px; align-items: center; }
+.joueur .repere { grid-row: span 3; width: 24px; height: 24px; }
+.distance { font-size: 40px; font-weight: 700; line-height: 1.1; white-space: nowrap; }
+.resultats.duel .distance { font-size: 28px; }
+.points { font-size: 22px; font-weight: 600; white-space: nowrap; }
+.resultats.duel .points { font-size: 17px; }
+.joueur meter { width: 100%; height: 6px; }
+.barre:has(.resultats) { align-items: flex-end; }
+/* Quitter : en haut à gauche, sur la photo, loin du bouton Valider. */
+.cadre-photo { position: relative; }
+.quitter {
+  position: absolute; top: calc(env(safe-area-inset-top) + 8px); left: calc(env(safe-area-inset-left) + 8px);
+  min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: 22px;
+  background: rgba(0,0,0,.55); color: #fff; font-weight: 600;
+}
 .barre .principal { flex: 1; }
 .repere {
   width: 26px; height: 26px; border-radius: 50%; background: var(--c); border: 3px solid #fff;

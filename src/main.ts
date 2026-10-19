@@ -177,12 +177,18 @@ function play(game: Game, pool: Photo[]) {
   const img = h('img', { class: 'photo', alt: '' });
   const mapEl = h('div', { class: 'carte' });
   const bar = h('div', { class: 'barre' });
-  const el = screen(h('div', { class: 'cadre-photo' }, img), mapEl, bar);
+  const photoFrame = h('div', { class: 'cadre-photo' }, img);
+  const el = screen(photoFrame, mapEl, bar);
   el.classList.add('jeu');
   const map = new GameMap(mapEl);
   let pending: LatLng | undefined;
 
-  const quit = () => { map.destroy(); home(); };
+  const quit = () => {
+    if (!confirm('Quitter la partie ? Les points seront perdus.')) return;
+    map.destroy();
+    home();
+  };
+  photoFrame.append(h('button', { class: 'quitter', onclick: quit, 'aria-label': 'Quitter la partie' }, '✕ Quitter'));
 
   const turn = () => {
     const photo = byId.get(currentPhoto(game).id)!;
@@ -194,14 +200,16 @@ function play(game: Game, pool: Photo[]) {
     map.frame(game.frame);
     const who = game.players.length > 1 ? `${game.players[game.player]} · ` : '';
     const validate = h('button', { class: 'principal', hidden: true, onclick: () => pending && reveal(pending) }, 'Valider');
+    const hint = h('span', { class: 'consigne' }, 'Touche la carte pour placer ton repère');
     bar.replaceChildren(
       h('span', {}, `${who}Manche ${game.round + 1}/${game.rounds.length}`),
+      hint,
       validate,
-      h('button', { class: 'discret', onclick: quit, 'aria-label': 'Quitter la partie' }, '✕'),
     );
     map.setTapHandler((p) => {
       pending = p;
       map.setMarkers([{ ...p, color: PLAYER_COLORS[game.player], label: game.players[game.player][0] }]);
+      hint.hidden = true;
       validate.hidden = false;
     });
   };
@@ -218,9 +226,18 @@ function play(game: Game, pool: Photo[]) {
       { ...answer, color: ANSWER_COLOR },
     ]);
     map.reveal(answer, gs.map((g) => g!));
+    const duel = game.players.length > 1;
     bar.replaceChildren(
-      h('div', { class: 'resultats', role: 'status' }, ...gs.map((g, i) =>
-        h('span', {}, `${game.players.length > 1 ? game.players[i] + ' : ' : ''}${formatDistance(g!.distanceKm)} · ${nf(g!.score)} pts`))),
+      h('div', { class: duel ? 'resultats duel' : 'resultats', role: 'status' }, ...gs.map((g, i) => {
+        const pin = h('span', { class: 'repere', 'aria-hidden': 'true' }, game.players[i][0]);
+        pin.style.setProperty('--c', PLAYER_COLORS[i]);
+        return h('div', { class: 'joueur' },
+          duel ? pin : h('span'),
+          h('span', { class: 'distance' }, `${duel ? game.players[i] + ' : ' : ''}${formatDistance(g!.distanceKm)}`),
+          h('span', { class: 'points' }, `${nf(g!.score)} points`),
+          h('meter', { min: 0, max: MAX_SCORE, value: g!.score, 'aria-hidden': 'true' }),
+        );
+      })),
       h('button', { class: 'principal', onclick: next }, game.round + 1 < game.rounds.length ? 'Suivant' : 'Résultats'),
     );
   };
@@ -269,39 +286,51 @@ async function settings() {
       h('ul', {},
         h('li', {}, 'Une copie réduite de chaque photo, ré-encodée : plus aucune métadonnée (date, appareil, position) dans l’image.'),
         h('li', {}, 'La position et la date de prise de vue, stockées à part, pour le jeu.'),
-        h('li', {}, 'Tout reste dans Safari, sur ce téléphone. Rien n’est envoyé, la carte elle-même est embarquée.'),
+        h('li', {}, 'Tout reste dans l’app, sur ce téléphone. Rien n’est envoyé, la carte elle-même est embarquée.'),
       ),
     ),
     h('div', { class: 'actions' },
       h('button', { onclick: () => gpsTest() }, 'Tester la lecture GPS'),
-      h('button', { class: 'danger', onclick: () => confirmWipe(photos.length) }, 'Tout supprimer'),
+      h('button', { class: 'danger', onclick: () => confirmWipe(photos.length, tripsOf(photos).length) }, 'Tout supprimer'),
       h('button', { onclick: () => home() }, 'Retour'),
     ),
   );
 }
 
-function confirmWipe(count: number) {
-  const btn = h('button', { class: 'danger' }, 'Maintenir 2 secondes pour tout supprimer');
-  let timer: number | undefined;
-  const start = (e: Event) => {
-    e.preventDefault();
-    btn.classList.add('charge');
-    timer = window.setTimeout(async () => {
-      await wipeEverything();
-      photoUrls.forEach((u) => URL.revokeObjectURL(u));
-      photoUrls.clear();
-      home(`Tout a été supprimé (${plural(count, 'photo', 'photos')}).`);
-    }, 2000);
+function confirmWipe(count: number, trips: number) {
+  const wipe = async () => {
+    await wipeEverything();
+    photoUrls.forEach((u) => URL.revokeObjectURL(u));
+    photoUrls.clear();
+    home(`Tout a été supprimé (${plural(count, 'photo', 'photos')}, ${plural(trips, 'voyage', 'voyages')}).`);
   };
-  const cancel = () => { clearTimeout(timer); btn.classList.remove('charge'); };
-  btn.addEventListener('pointerdown', start);
-  btn.addEventListener('pointerup', cancel);
-  btn.addEventListener('pointerleave', cancel);
-  btn.addEventListener('pointercancel', cancel);
+  // Appui long de 2 s au doigt…
+  const hold = h('button', { class: 'danger maintenir' }, 'Maintenir 2 secondes pour tout supprimer');
+  let timer: number | undefined;
+  const start = (e: PointerEvent) => {
+    e.preventDefault();
+    hold.classList.add('charge');
+    timer = window.setTimeout(wipe, 2000);
+  };
+  const cancel = () => { clearTimeout(timer); hold.classList.remove('charge'); };
+  hold.addEventListener('pointerdown', start);
+  hold.addEventListener('pointerup', cancel);
+  hold.addEventListener('pointerleave', cancel);
+  hold.addEventListener('pointercancel', cancel);
+  hold.addEventListener('contextmenu', (e) => e.preventDefault());
+  // …ou deux confirmations successives, pour VoiceOver et le clavier, qui ne savent pas maintenir.
+  const yes = h('button', { class: 'danger', hidden: true, onclick: wipe }, 'Oui, tout supprimer');
+  const alt = h('button', { onclick: () => { alt.hidden = true; yes.hidden = false; yes.focus(); } }, 'Confirmer sans maintenir');
   screen(
     h('h2', {}, 'Tout supprimer ?'),
-    h('p', {}, `Seront effacés de ce téléphone : ${plural(count, 'photo', 'photos')}, leurs positions, les réglages et le cache hors ligne. C’est définitif.`),
-    h('div', { class: 'actions' }, btn, h('button', { onclick: () => settings() }, 'Annuler')),
+    h('p', {}, 'Seront effacés de ce téléphone :'),
+    h('ul', { class: 'bilan' },
+      h('li', {}, `${plural(count, 'photo', 'photos')} et leurs positions`),
+      h('li', {}, plural(trips, 'voyage', 'voyages')),
+      h('li', {}, 'les réglages et le cache hors ligne'),
+    ),
+    h('p', {}, 'C’est définitif.'),
+    h('div', { class: 'actions' }, hold, alt, yes, h('button', { onclick: () => settings() }, 'Annuler')),
   );
 }
 
@@ -326,6 +355,13 @@ function gpsTest() {
     out,
     h('div', { class: 'actions' }, h('button', { onclick: () => settings() }, 'Retour')),
   );
+}
+
+// Refus d'être affichée dans une page tierce (GitHub Pages ne permet pas
+// l'en-tête frame-ancestors) : on ne peut pas piéger « Tout supprimer » dans une iframe.
+if (window.top !== window.self) {
+  document.body.replaceChildren(document.createTextNode('GuessWhere ne peut pas être affiché dans une autre page.'));
+  throw new Error('GuessWhere refuse d’être intégré dans une iframe');
 }
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

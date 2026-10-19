@@ -65,7 +65,8 @@ try {
     await page.locator('.carte').click({ position: { x: 150, y: 120 } });
     await page.getByRole('button', { name: 'Valider' }).click();
     await page.locator('.resultats').waitFor();
-    assert.match(await page.locator('.resultats').innerText(), /pts/);
+    assert.match(await page.locator('.resultats').innerText(), /points/);
+    assert.equal(await page.locator('.consigne').count(), 0);
     await page.locator('.barre .principal').click();
   }
   await page.getByText('Fin de partie').waitFor();
@@ -79,6 +80,7 @@ try {
   assert.ok(mapBox.x >= photoBox.x + photoBox.width - 1, 'paysage : carte à droite de la photo');
   await page.screenshot({ path: 'test/out-paysage.png' });
   await page.setViewportSize({ width: 390, height: 664 });
+  page.once('dialog', (d) => d.accept());
   await page.getByRole('button', { name: 'Quitter la partie' }).click();
   await page.getByRole('button', { name: 'Jouer' }).waitFor();
 
@@ -94,14 +96,14 @@ try {
   await page.screenshot({ path: 'test/out-manche.png' });
   await page.getByRole('button', { name: 'Valider' }).click();
   await page.getByText('Passe le téléphone à Tom').waitFor();
-  assert.equal(await page.locator('.repere').count(), 0, 'le repère de Léa reste visible');
+  assert.equal(await page.locator('.carte .repere').count(), 0, 'le repère de Léa reste visible');
   await page.getByText('C’est moi, je joue').click();
   await page.getByText('Tom · Manche 1/1').waitFor();
   await page.locator('.carte').click({ position: { x: 200, y: 150 } });
   await page.getByRole('button', { name: 'Valider' }).click();
   await page.locator('.resultats').waitFor();
   assert.match(await page.locator('.resultats').innerText(), /Léa : .*\n?Tom : /s);
-  assert.equal(await page.locator('.repere').count(), 3);
+  assert.equal(await page.locator('.carte .repere').count(), 3);
   await page.waitForTimeout(800);
   await page.screenshot({ path: 'test/out-revelation.png' });
   await page.locator('.barre .principal').click();
@@ -117,15 +119,24 @@ try {
   await page.mouse.down();
   await page.waitForTimeout(2300);
   await page.mouse.up();
-  await page.getByText('Tout a été supprimé (2 photos)').waitFor();
+  await page.getByText('Tout a été supprimé (2 photos, 2 voyages)').waitFor();
   await page.reload();
   await page.getByText('Aucune photo').waitFor();
+
+  // Suppression sans appui long (VoiceOver) : deux clics.
+  await page.getByText('Réglages et confidentialité').click();
+  await page.getByRole('button', { name: 'Tout supprimer' }).click();
+  await page.getByText('Confirmer sans maintenir').click();
+  await page.getByText('Oui, tout supprimer').click();
+  await page.getByText('Tout a été supprimé').waitFor();
+
+  await page.goto('http://localhost:4191/');
   const count = await page.evaluate(() => new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; if (!db.objectStoreNames.contains('photos')) return r(0); const c = db.transaction('photos').objectStore('photos').count(); c.onsuccess = () => r(c.result); }; }));
   assert.equal(count, 0);
   assert.deepEqual(thirdParty, [], 'requêtes vers un tiers : ' + thirdParty.join(', '));
   assert.deepEqual(problems, [], 'erreurs console / CSP');
   console.log('E2E OK');
-} catch (e) { await page.screenshot({ path: "test/out-echec.png" }); console.log(problems); throw e;
+} catch (e) { await page.screenshot({ path: "test/out-echec.png", timeout: 5000 }).catch(() => {}); console.log(problems); throw e;
 } finally {
   await browser.close();
   process.kill(-server.pid);
