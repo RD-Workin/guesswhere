@@ -1,5 +1,5 @@
 import './style.css';
-import { addPhoto, allPhotos, deleteReceivedGame, purgeExpiredReceived, receivedGames, requestPersistence, saveReceivedGame, wipeEverything, type ReceivedGame } from './db';
+import { addPhoto, allPhotos, deletePhotos, deleteReceivedGame, loadPhotos, migratePhotos, purgeExpiredReceived, receivedGames, requestPersistence, saveReceivedGame, wipeEverything, type ReceivedGame } from './db';
 import { advance, currentPhoto, newGame, submitGuess, totals, DEFAULT_ROUNDS, type Game } from './game';
 import { formatDistance, type LatLng } from './geo';
 import { GameMap, resetSatellite } from './map';
@@ -64,7 +64,7 @@ function countriesOf(photos: Photo[]): Trip[] {
 
 async function home(message?: string) {
   await purgeExpiredReceived();
-  const photos = await allPhotos();
+  const { photos, lost } = await loadPhotos();
   const pending = await receivedGames();
   screen(
     h('header', { class: 'titre' }, h('h1', {}, 'GuessWhere'), h('p', { class: 'badge' }, 'Sur ton iPhone uniquement')),
@@ -73,6 +73,13 @@ async function home(message?: string) {
       h('p', {}, h('strong', {}, 'Nouvelle version disponible.'), ' Elle ne s’installe pas sans ton accord.'),
       h('p', {}, h('a', { href: CHANGES_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Voir ce qui change')),
       h('button', { class: 'principal', onclick: () => acceptUpdate() }, 'Installer la nouvelle version'),
+    ),
+    lost.length > 0 && h('section', { class: 'bandeau', role: 'alert' },
+      h('p', {}, h('strong', {}, `${plural(lost.length, 'photo illisible', 'photos illisibles')}.`), ' Leur clé de chiffrement a disparu de cet iPhone, ce qui peut arriver après une restauration ou une mise à jour d’iOS. Tes autres photos et tes parties reçues ne sont pas touchées.'),
+      h('button', { class: 'principal', onclick: async () => {
+        await deletePhotos(lost);
+        home('Photos illisibles retirées. Choisis-les de nouveau avec « Importer des photos ».');
+      } }, 'Réimporter'),
     ),
     !canImport() && h('section', { class: 'bandeau' },
       h('p', {}, h('strong', {}, 'Installe d’abord GuessWhere sur ton écran d’accueil.')),
@@ -642,4 +649,5 @@ if (import.meta.env.PROD) {
   onUpdateWaiting(() => document.querySelector('.titre') && home());
 }
 
-home();
+// Photos importées avant le chiffrement : chiffrées une à une avant l'accueil.
+migratePhotos().catch(() => undefined).then(() => home());

@@ -37,27 +37,34 @@ try {
   await page.getByText('2 photos sans position').waitFor();
   await page.getByText('Réessayer').waitFor();
 
-  // Aucune métadonnée dans les images stockées, aucun nom de fichier d'origine.
+  // Photos stockées chiffrées, chacune avec sa clé non exportable : ni image, ni position, ni pays, ni nom de fichier en clair.
   const stored = await page.evaluate(async () => {
     const db = await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => r(q.result); });
-    const all = await new Promise((r) => { const q = db.transaction('photos').objectStore('photos').getAll(); q.onsuccess = () => r(q.result); });
+    const get = (name) => new Promise((r) => { const q = db.transaction(name).objectStore(name).getAll(); q.onsuccess = () => r(q.result); });
+    const [all, keys] = [await get('photos'), await get('cles')];
     db.close();
-    return Promise.all(all.map(async (p) => {
-      const bytes = new Uint8Array(await p.blob.arrayBuffer());
-      const text = new TextDecoder('latin1').decode(bytes);
-      return { keys: Object.keys(p).sort().join(), country: p.countryName, type: p.blob.type, app1: text.includes('Exif\0'), apple: text.includes('Apple') || text.includes('iPhone'), name: JSON.stringify(p).includes('tokyo') };
-    }));
+    return {
+      keys: keys.map((k) => k.key.extractable),
+      photos: all.map((p) => {
+        const text = new TextDecoder('latin1').decode(p.data);
+        return { fields: Object.keys(p).sort().join(), keyFound: keys.some((k) => k.id === p.id), clear: /Exif\0|Apple|iPhone|Japon|Brésil|tokyo|JFIF/.test(text + JSON.stringify(p)) };
+      }),
+    };
   });
-  for (const s of stored) {
-    assert.equal(s.type, 'image/jpeg');
-    assert.equal(s.app1, false, 'EXIF présent dans l’image stockée');
-    assert.equal(s.apple, false, 'modèle d’appareil présent');
-    assert.equal(s.name, false, 'nom de fichier conservé');
+  assert.deepEqual(stored.keys, [false, false], 'clés non exportables');
+  for (const s of stored.photos) {
+    assert.equal(s.fields, 'data,id,iv');
+    assert.equal(s.keyFound, true);
+    assert.equal(s.clear, false, 'donnée en clair dans le stockage');
   }
-  assert.deepEqual(stored.map((s) => s.country).sort(), ['Brésil', 'Japon']);
+  // Une fois déchiffrées, les photos gardent leur pays.
+  await page.getByText('Continuer').click();
+  await page.getByText('Mes voyages').click();
+  await page.getByText('Japon', { exact: false }).first().waitFor();
+  await page.getByText('Brésil', { exact: false }).first().waitFor();
+  await page.getByRole('button', { name: 'Retour' }).click();
 
   // Partie solo de 2 manches.
-  await page.getByText('Continuer').click();
   await page.getByRole('button', { name: 'Jouer', exact: true }).click();
   await page.locator('#manches').fill('2');
   await page.getByText('Commencer').click();
@@ -113,8 +120,58 @@ try {
   await page.locator('.barre .principal').click();
   await page.getByText('Fin de partie').waitFor();
 
+  // Migration : une photo enregistrée avant le chiffrement (en clair) est chiffrée à l'ouverture suivante.
+  await page.evaluate(async () => {
+    const c = new OffscreenCanvas(40, 30);
+    c.getContext('2d').fillRect(0, 0, 40, 30);
+    const blob = await c.convertToBlob({ type: 'image/jpeg' });
+    const db = await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => r(q.result); });
+    const tx = db.transaction(['photos', 'recus'], 'readwrite');
+    tx.objectStore('photos').put({ id: 'ancienne', blob, lat: 48.8584, lng: 2.2945, takenAt: Date.UTC(2020, 5, 1), countryId: '250', countryName: 'France', addedAt: Date.now() });
+    // Une partie reçue en cours : elle doit survivre à la perte d'une clé.
+    tx.objectStore('recus').put({ id: 'recue', file: new Blob(['x']), code: '', from: 'Zoé', player: 'Moi', expiresAt: Date.now() + 864e5, guesses: [] });
+    await new Promise((r) => (tx.oncomplete = r));
+    db.close();
+  });
+  await page.reload();
+  await page.getByText('3 photos prêtes à jouer').waitFor();
+  const migrated = await page.evaluate(async () => {
+    const db = await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => r(q.result); });
+    const p = await new Promise((r) => { const q = db.transaction('photos').objectStore('photos').get('ancienne'); q.onsuccess = () => r(q.result); });
+    db.close();
+    return Object.keys(p).sort().join();
+  });
+  assert.equal(migrated, 'data,id,iv', 'photo ancienne chiffrée');
+
+  // Clé perdue (restauration de l'iPhone) : pas de plantage, « Réimporter », parties reçues gardées.
+  await page.evaluate(async () => {
+    const db = await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => r(q.result); });
+    const tx = db.transaction('cles', 'readwrite');
+    tx.objectStore('cles').delete('ancienne');
+    await new Promise((r) => (tx.oncomplete = r));
+    db.close();
+  });
+  await page.reload();
+  await page.getByText('1 photo illisible').waitFor();
+  await page.getByText('2 photos prêtes à jouer').waitFor();
+  await page.getByText('Reprendre la partie de Zoé').waitFor();
+  await page.getByRole('button', { name: 'Réimporter' }).click();
+  await page.getByText('Photos illisibles retirées').waitFor();
+  assert.equal(await page.getByText('photo illisible').count(), 0);
+  await page.getByText('Reprendre la partie de Zoé').waitFor();
+  await page.evaluate(async () => {
+    const db = await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => r(q.result); });
+    const tx = db.transaction(['recus', 'photos', 'cles'], 'readwrite');
+    tx.objectStore('recus').delete('recue');
+    const left = await new Promise((r) => { const q = tx.objectStore('photos').count(); q.onsuccess = () => r(q.result); });
+    const keys = await new Promise((r) => { const q = tx.objectStore('cles').count(); q.onsuccess = () => r(q.result); });
+    await new Promise((r) => (tx.oncomplete = r));
+    db.close();
+    if (left !== 2 || keys !== 2) throw new Error(`après Réimporter : ${left} photos, ${keys} clés`);
+  });
+  await page.reload();
+
   // Test du chiffrement : clé non exportable conservée après rechargement, puis nettoyage.
-  await page.getByText('Accueil').click();
   await page.getByText('Réglages et confidentialité').click();
   await page.getByRole('button', { name: 'Tester le chiffrement' }).click();
   await page.getByRole('button', { name: 'Lancer le test' }).click();
