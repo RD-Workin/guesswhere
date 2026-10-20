@@ -25,7 +25,7 @@
     "fake-indexeddb": "^6.2.6",
     "piexifjs": "^1.0.6",
     "playwright-core": "^1.64.1",
-    "typescript": "~5.9.0",
+    "typescript": "~7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
   }
