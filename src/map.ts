@@ -142,6 +142,7 @@ export class GameMap {
       this.map.addSource('lignes', { type: 'geojson', data });
       this.map.addLayer({ id: 'lignes', type: 'line', source: 'lignes', paint: { 'line-color': dark() ? '#fff' : '#1c1c1e', 'line-width': 2, 'line-dasharray': [2, 2] } });
     }
+    this.map.resize(); // la barre de résultat a pu réduire la carte
     const pts = [[answer.lng, answer.lat], ...guesses.map(unwrap)];
     const lngs = pts.map((p) => p[0]);
     const lats = pts.map((p) => p[1]);

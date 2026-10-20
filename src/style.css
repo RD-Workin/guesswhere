@@ -23,7 +23,7 @@
   --jaune-doux: #fff1c2; --jaune-texte: #7a5300;
   --rose-doux: #ffe0e6; --rose-texte: #a3123a;
   --ciel: linear-gradient(180deg, #3aa0f0 0%, #7cc8ff 45%, #c7ecff 100%);
-  --ciel-fin: #c7ecff; --ciel-texte: #0b2a5b; --ciel-texte-doux: #1d3f73;
+  --ciel-fin: #c7ecff; --ciel-texte: #0b2a5b; --ciel-texte-doux: #0b2a5b;
   --panneau: rgba(255, 249, 238, .94); --panneau-bord: #f1dfc2; --panneau-titre: #7a4a12;
   --grad-score: linear-gradient(90deg, #4f2bbd, #0a84ff);
   --rond: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -179,8 +179,6 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, #30d158, #0a84f
 .where { color: #ff9f0a; }
 .slogan { font-family: var(--rond); font-size: 17px; font-weight: 700; margin: 8px 0 2px; color: var(--ciel-texte); text-transform: none; }
 @keyframes flotte { 50% { transform: translateY(-6px) rotate(-3deg); } }
-.trajet { animation: defile 1.2s linear infinite; }
-@keyframes defile { to { stroke-dashoffset: -20; } }
 .nuage { animation: nuage 16s ease-in-out infinite alternate; }
 .nuage-2 { animation-duration: 21s; animation-direction: alternate-reverse; }
 @keyframes nuage { from { transform: translateX(-14px); } to { transform: translateX(18px); } }
@@ -201,9 +199,9 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, #30d158, #0a84f
 .modes h2 { text-align: center; color: var(--panneau-titre); margin: 8px 0 0; }
 button.mode, .bouton.mode {
   justify-content: flex-start; text-align: left; gap: 12px; min-height: 60px; padding: 8px 14px; border-radius: 18px;
-  background: linear-gradient(180deg, #1a7ff0, #0058c4); color: #fff; border: 0; box-shadow: 0 5px 0 #003f8f;
+  background: linear-gradient(180deg, #156bd0, #0058c4); color: #fff; border: 0; box-shadow: 0 5px 0 #003f8f;
 }
-button.mode.orange { background: linear-gradient(180deg, #e8590c, #c2410c); box-shadow: 0 5px 0 #8a2d06; }
+button.mode.orange { background: linear-gradient(180deg, #c9470b, #b8380a); box-shadow: 0 5px 0 #8a2d06; }
 button.mode:active, .bouton.mode:active { transform: translateY(5px); box-shadow: none; }
 .mode .ico { font-size: 28px; width: 36px; text-align: center; filter: drop-shadow(0 2px 0 rgba(0,0,0,.2)); }
 .mode-texte { display: flex; flex-direction: column; line-height: 1.2; }
@@ -231,7 +229,7 @@ button.mode:active, .bouton.mode:active { transform: translateY(5px); box-shadow
 .accueil .bandeau a { color: var(--accent); }
 
 /* Globe qui tourne : seule sa calotte nord dépasse, comme un horizon. */
-.horizon { position: relative; height: 200px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 65%, transparent); mask-image: linear-gradient(#000 65%, transparent); margin: 0 calc(-16px - env(safe-area-inset-right)) 0 calc(-16px - env(safe-area-inset-left)); pointer-events: none; }
+.horizon { position: relative; height: 170px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 65%, transparent); mask-image: linear-gradient(#000 65%, transparent); margin: 0 calc(-16px - env(safe-area-inset-right)) 0 calc(-16px - env(safe-area-inset-left)); pointer-events: none; }
 .globe { position: absolute; left: 50%; top: 14px; width: max(150%, 560px); height: auto; transform: translateX(-50%); animation: globe-entree .9s cubic-bezier(.2, .8, .2, 1) backwards; }
 @keyframes globe-entree { from { transform: translate(-50%, 40%); } }
 .ocean { fill: #1e6fd9; }
@@ -425,7 +423,27 @@ button.mode:active, .bouton.mode:active { transform: translateY(5px); box-shadow
 .teinte-0 { background: linear-gradient(160deg, #7b3fe4, #4f2bbd); box-shadow: 0 5px 0 #33197e; }
 .teinte-1 { background: linear-gradient(160deg, #0b7d72, #075e56); box-shadow: 0 5px 0 #064a43; }
 .teinte-2 { background: linear-gradient(160deg, #c2255c, #a61e4d); box-shadow: 0 5px 0 #6e1131; }
-.teinte-3 { background: linear-gradient(160deg, #1a7ff0, #0058c4); box-shadow: 0 5px 0 #003f8f; }
+.teinte-3 { background: linear-gradient(160deg, #156bd0, #0058c4); box-shadow: 0 5px 0 #003f8f; }
 .tout-voir { background: var(--panneau); color: var(--text); border: 2px solid var(--panneau-bord); box-shadow: 0 5px 0 rgba(0,0,0,.12); }
 .tout-voir .ico { font-size: 30px; margin-bottom: auto; }
 .voyage-carte:active { transform: translateY(5px); box-shadow: none; }
+
+/* Avion : transform seul (passe par le compositeur), le long de la route pointillée. */
+.avion { animation: vol 9s linear infinite; }
+@keyframes vol {
+  0% { transform: translate(-20px, 70px) rotate(-30deg); }
+  15% { transform: translate(40px, 42px) rotate(-12deg); }
+  30% { transform: translate(110px, 62px) rotate(18deg); }
+  45% { transform: translate(190px, 60px) rotate(-14deg); }
+  65% { transform: translate(270px, 30px) rotate(-6deg); }
+  80% { transform: translate(320px, 38px) rotate(16deg); }
+  100% { transform: translate(370px, 54px) rotate(12deg); }
+}
+/* Après 20 s sans toucher l'accueil, le décor s'arrête (batterie) ; il repart au premier appui. */
+body.repos .accueil *, body.repos .accueil *::after { animation-play-state: paused !important; }
+/* Accueil en un écran : actions rares en lignes légères. */
+.modes .mode.leger { background: transparent; color: var(--text); box-shadow: none; min-height: 52px; border: 2px solid var(--panneau-bord); }
+.modes .mode.leger .ico { font-size: 24px; }
+.modes .mode.leger .mode-texte strong { font-size: 16px; }
+.modes .mode.leger:active { transform: none; background: var(--panneau-bord); }
+.sur { margin: 0; color: var(--muted); font-weight: 600; }

@@ -16,6 +16,9 @@ import { applyTheme, getTheme, setTheme, type Theme } from './theme';
 import { confetti, countUp, skipCounters, stars, verdict } from './fun';
 
 const PLAYER_COLORS = ['#0A84FF', '#FF9F0A'];
+/** Lettre des repères : l'initiale, ou 1 et 2 si deux joueurs ont la même. */
+const pinLabels = (players: string[]) =>
+  new Set(players.map((p) => p[0]?.toUpperCase())).size === players.length ? players.map((p) => p[0]) : players.map((_, i) => String(i + 1));
 const ANSWER_COLOR = '#30D158';
 
 const isInstalled = () =>
@@ -38,6 +41,19 @@ function urlFor(p: Photo): string {
 /** Pictogramme décoratif devant un libellé (ignoré par VoiceOver). */
 const ico = (e: string) => h('span', { class: 'ico', 'aria-hidden': 'true' }, e);
 const txt = (t: string) => h('span', {}, t);
+
+/** Le décor de l'accueil s'arrête après 20 s sans interaction, et repart au premier appui. */
+let idleTimer: number | undefined;
+function restAfterIdle() {
+  const wake = () => {
+    document.body.classList.remove('repos');
+    clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(() => document.querySelector('.accueil') && document.body.classList.add('repos'), 20000);
+  };
+  document.removeEventListener('pointerdown', wake);
+  document.addEventListener('pointerdown', wake, { passive: true });
+  wake();
+}
 
 /** Drapeau emoji du pays le plus présent dans un voyage (🌍 si inconnu). */
 function flagOf(photos: Photo[]): string {
@@ -148,11 +164,12 @@ async function home(message?: string) {
       h('h2', {}, 'Choisis ta partie'),
       ...pending.map((g) => mode('⏯️', `Reprendre la partie de ${g.from}`, 'Ta partie reçue t’attend', () => playReceived(g), 'orange')),
       photos.length > 0 && mode('⚔️', 'Duel', 'À deux sur ce téléphone', () => setup(photos, true), 'orange'),
-      mode('📩', 'Jouer une partie reçue', 'Avec le fichier et le code d’un ami', () => openReceived()),
-      canImport() && importButton('Importer des photos', false, '📷', 'Seules la position et la date sont lues'),
+      mode('📩', 'Jouer une partie reçue', 'Avec le fichier et le code d’un ami', () => openReceived(), 'leger'),
+      canImport() && importButton('Importer des photos', false, '📷', 'Seules position et date sont lues'),
     ),
   );
   el.classList.add('accueil');
+  restAfterIdle();
 }
 
 /**
@@ -162,7 +179,7 @@ async function home(message?: string) {
 function importButton(label = 'Importer des photos', primary = false, icon?: string, sub?: string): HTMLElement {
   const input = h('input', { type: 'file', accept: '.heic,.heif,image/*', multiple: true, hidden: true });
   input.addEventListener('change', () => input.files?.length && runImport([...input.files]));
-  if (icon) return h('label', { class: 'bouton mode' }, ico(icon), h('span', { class: 'mode-texte' }, h('strong', {}, label), sub && h('small', {}, sub)), input);
+  if (icon) return h('label', { class: 'bouton mode leger' }, ico(icon), h('span', { class: 'mode-texte' }, h('strong', {}, label), sub && h('small', {}, sub)), input);
   return h('label', { class: primary ? 'bouton principal' : 'bouton' }, label, input);
 }
 
@@ -317,7 +334,7 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     );
     map.setTapHandler((p) => {
       pending = p;
-      map.setMarkers([{ ...p, color: PLAYER_COLORS[game.player], label: game.players[game.player][0] }]);
+      map.setMarkers([{ ...p, color: PLAYER_COLORS[game.player], label: pinLabels(game.players)[game.player] }]);
       hint.hidden = true;
       validate.hidden = false;
     });
@@ -332,10 +349,9 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     const answer = currentPhoto(game);
     const gs = game.guesses[game.round];
     map.setMarkers([
-      ...gs.map((g, i) => ({ ...g!, color: PLAYER_COLORS[i], label: game.players[i][0] })),
+      ...gs.map((g, i) => ({ ...g!, color: PLAYER_COLORS[i], label: pinLabels(game.players)[i] })),
       { ...answer, color: ANSWER_COLOR, target: true },
     ]);
-    map.reveal(answer, gs.map((g) => g!));
     const duel = game.players.length > 1;
     const scores = gs.map((g) => g!.score);
     const top = Math.max(...scores);
@@ -352,7 +368,7 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
       line,
       h('div', { class: 'ligne-resultat' },
         h('div', { class: duel ? 'resultats duel' : 'resultats', role: 'status' }, ...gs.map((g, i) => {
-          const pin = h('span', { class: 'repere', 'aria-hidden': 'true' }, game.players[i][0]);
+          const pin = h('span', { class: 'repere', 'aria-hidden': 'true' }, pinLabels(game.players)[i]);
           pin.style.setProperty('--c', PLAYER_COLORS[i]);
           // Le nombre défile à l'écran ; VoiceOver lit directement la valeur finale.
           const shown = h('span', { 'aria-hidden': 'true' });
@@ -369,6 +385,8 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
         h('button', { class: 'principal', onclick: next }, game.round + 1 < game.rounds.length ? 'Suivant' : 'Résultats'),
       ),
     );
+    // Après le bandeau : la carte a rétréci, le cadrage tient compte de sa nouvelle taille.
+    map.reveal(answer, gs.map((g) => g!));
     if (top >= 4800) confetti(28);
   };
 
@@ -378,7 +396,7 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
   const handOver = () => {
     advance(game);
     const name = game.players[game.player];
-    const avatar = h('div', { class: 'avatar', 'aria-hidden': 'true' }, name[0]);
+    const avatar = h('div', { class: 'avatar', 'aria-hidden': 'true' }, pinLabels(game.players)[game.player]);
     avatar.style.setProperty('--c', PLAYER_COLORS[game.player]);
     const cover = h('div', { class: 'passage' },
       avatar,
@@ -408,8 +426,9 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
         h('h2', {}, 'Fin de partie'),
         !duel && starRow(n),
         !duel && big,
-        ...game.players.map((p, i) => h('p', { class: 'total' }, `${p} : ${nf(t[i])} / ${nf(max)}`,
-          duel && t[i] === best && alone ? ' 🏆' : '')),
+        !duel && h('p', { class: 'sur' }, h('span', { class: 'vh' }, `${nf(best)} `), `points sur ${nf(max)}`),
+        ...(duel ? game.players : []).map((p, i) => h('p', { class: 'total' }, `${p} : ${nf(t[i])} / ${nf(max)}`,
+          t[i] === best && alone ? ' 🏆' : '')),
         duel && t.every((x) => x === best) && h('p', {}, 'Égalité parfaite !'),
         recap(game),
       ),
@@ -434,7 +453,7 @@ function starRow(n: number): HTMLElement {
 function recap(game: Game): HTMLElement {
   return h('ol', { class: 'recap' }, ...game.guesses.map((gs, r) => h('li', {},
     h('span', {}, `Manche ${r + 1}`),
-    h('b', {}, gs.map((g) => (g ? `${verdict(g.score).emoji} ${nf(g.score)}` : '–')).join('  ·  ')),
+    h('b', {}, ...gs.flatMap((g, i) => [i > 0 && '  ·  ', ...(g ? [ico(verdict(g.score).emoji), ` ${nf(g.score)}`] : ['–'])])),
   )));
 }
 

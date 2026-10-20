@@ -28,11 +28,11 @@ const cloud = (x: number, y: number, k: number, cls: string) =>
  */
 export function heroArt(): SVGSVGElement {
   const route = 'M-20 70C60 20 120 100 190 60S300 20 360 50';
-  const plane = s('g', { class: 'avion' },
+  const plane = s('g', { class: calm() ? '' : 'avion' },
     s('path', { d: 'M14 0c0-1.4-1.6-2-3-2H3L-4-11h-3l3 9h-7l-3-3h-2l1.5 5-1.5 5h2l3-3h7l-3 9h3l7-9h8c1.4 0 3-.6 3-2z', fill: '#fff' }),
   );
+  // Avion animé en CSS (style.css, @keyframes vol) ; position fixe si les animations sont réduites.
   if (calm()) plane.setAttribute('transform', 'translate(250 34) rotate(-12)');
-  else plane.append(s('animateMotion', { dur: '9s', repeatCount: 'indefinite', rotate: 'auto', path: route }));
   const stars = [[24, 30], [92, 12], [210, 16], [300, 76], [250, 40], [140, 100], [330, 18]].map(([x, y], i) =>
     s('circle', { cx: x, cy: y, r: i % 2 ? 1.6 : 2.2, fill: '#fff', class: `scintille scintille-${i % 3}` }));
   return s('svg', { viewBox: '0 0 340 120', class: 'illustration', 'aria-hidden': 'true', focusable: 'false' },
