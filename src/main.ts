@@ -55,31 +55,6 @@ function restAfterIdle() {
   wake();
 }
 
-/** Drapeau emoji du pays le plus présent dans un voyage (🌍 si inconnu). */
-function flagOf(photos: Photo[]): string {
-  const counts = new Map<string, number>();
-  for (const p of photos) if (p.countryId) counts.set(p.countryId, (counts.get(p.countryId) ?? 0) + 1);
-  const id = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
-  // countryId est le code ISO alpha-2 (countries.ts) ; sinon un nom, sans drapeau.
-  return id && /^[A-Z]{2}$/.test(id) ? String.fromCodePoint(...[...id].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '🌍';
-}
-
-/** Carrousel des voyages : un appui lance une partie sur ce voyage. */
-function tripCarousel(photos: Photo[]): HTMLElement {
-  const trips = tripsOf(photos);
-  return h('section', { class: 'voyages-accueil' },
-    h('h2', {}, 'Tes voyages'),
-    h('div', { class: 'carrousel' },
-      ...trips.map((t, i) => h('button', { class: `voyage-carte teinte-${i % 4}`, onclick: () => play(newGame(t.photos, ['Joueur 1'], DEFAULT_ROUNDS), t.photos) },
-        h('span', { class: 'drapeau', 'aria-hidden': 'true' }, flagOf(t.photos)),
-        h('strong', {}, t.name),
-        h('small', {}, `${plural(t.photos.length, 'photo', 'photos')} · Jouer`),
-      )),
-      h('button', { class: 'voyage-carte tout-voir', onclick: () => library(photos) }, ico('🗺️'), h('strong', {}, 'Mes voyages'), h('small', {}, 'Tout voir')),
-    ),
-  );
-}
-
 /** Carte de mode de jeu : pictogramme, titre et sous-titre. */
 const mode = (icon: string, title: string, sub: string, onclick: () => void, tone = '') =>
   h('button', { class: `mode ${tone}`, onclick }, ico(icon), h('span', { class: 'mode-texte' }, h('strong', {}, title), h('small', {}, sub)));
@@ -159,11 +134,11 @@ async function home(message?: string) {
         countries > 0 && h('li', {}, `🌍 ${plural(countries, 'pays', 'pays')}`),
         trips > 0 && h('li', {}, `✈️ ${plural(trips, 'voyage', 'voyages')}`))
       : h('p', { class: 'vide' }, 'Aucune photo pour l’instant. Importe des photos de voyage : seules leur position et leur date sont lues, ici même.'),
-    photos.length > 0 && tripCarousel(photos),
     h('section', { class: 'modes' },
       h('h2', {}, 'Choisis ta partie'),
       ...pending.map((g) => mode('⏯️', `Reprendre la partie de ${g.from}`, 'Ta partie reçue t’attend', () => playReceived(g), 'orange')),
       photos.length > 0 && mode('⚔️', 'Duel', 'À deux sur ce téléphone', () => setup(photos, true), 'orange'),
+      photos.length > 0 && mode('🗺️', 'Mes voyages', 'Tes photos rangées par voyage', () => library(photos), 'leger'),
       mode('📩', 'Jouer une partie reçue', 'Avec le fichier et le code d’un ami', () => openReceived(), 'leger'),
       canImport() && importButton('Importer des photos', false, '📷', 'Seules position et date sont lues'),
     ),
