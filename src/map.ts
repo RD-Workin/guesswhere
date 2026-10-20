@@ -1,3 +1,4 @@
+import { isDark } from './theme';
 import * as maplibregl from 'maplibre-gl';
 import type { LngLatBoundsLike, StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -36,7 +37,7 @@ export function resetSatellite() {
   satellite = undefined;
 }
 
-const dark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+const dark = isDark;
 
 /**
  * Fond de carte embarqué (frontières Natural Earth) : aucune tuile n'est
@@ -60,6 +61,8 @@ function style(): StyleSpecification {
 export interface MarkerSpec extends LatLng {
   color: string;
   label?: string;
+  /** Vraie position : repère avec un halo qui pulse. */
+  target?: boolean;
 }
 
 export class GameMap {
@@ -106,10 +109,13 @@ export class GameMap {
   setMarkers(specs: MarkerSpec[]) {
     this.markers.forEach((m) => m.remove());
     this.markers = specs.map((s) => {
+      // MapLibre place le repère avec transform : l'animation de chute vit sur un élément intérieur.
       const el = document.createElement('div');
-      el.className = 'repere';
-      el.style.setProperty('--c', s.color);
-      if (s.label) el.textContent = s.label;
+      const dot = document.createElement('div');
+      dot.className = s.target ? 'repere cible' : 'repere';
+      dot.style.setProperty('--c', s.color);
+      if (s.label) dot.textContent = s.label;
+      el.append(dot);
       return new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lng, s.lat]).addTo(this.map);
     });
   }
@@ -136,6 +142,7 @@ export class GameMap {
       this.map.addSource('lignes', { type: 'geojson', data });
       this.map.addLayer({ id: 'lignes', type: 'line', source: 'lignes', paint: { 'line-color': dark() ? '#fff' : '#1c1c1e', 'line-width': 2, 'line-dasharray': [2, 2] } });
     }
+    this.map.resize(); // la barre de résultat a pu réduire la carte
     const pts = [[answer.lng, answer.lat], ...guesses.map(unwrap)];
     const lngs = pts.map((p) => p[0]);
     const lats = pts.map((p) => p[1]);
