@@ -11,6 +11,9 @@ import { groupIntoTrips } from './trips';
 import { checkTest, cleanTest, startTest, testPending } from './cryptotest';
 import { acceptUpdate, CHANGES_URL, installedVersion, onUpdateWaiting, registerServiceWorker, updateWaiting } from './update';
 import { h, nf, plural, screen } from './ui';
+import { globe, heroArt, logo } from './decor';
+import { applyTheme, getTheme, setTheme, type Theme } from './theme';
+import { confetti, countUp, stars, verdict } from './fun';
 
 const PLAYER_COLORS = ['#0A84FF', '#FF9F0A'];
 const ANSWER_COLOR = '#30D158';
@@ -31,6 +34,14 @@ function urlFor(p: Photo): string {
   if (!u) photoUrls.set(p.id, (u = URL.createObjectURL(p.blob)));
   return u;
 }
+
+/** Pictogramme décoratif devant un libellé (ignoré par VoiceOver). */
+const ico = (e: string) => h('span', { class: 'ico', 'aria-hidden': 'true' }, e);
+const txt = (t: string) => h('span', {}, t);
+
+/** Carte de mode de jeu : pictogramme, titre et sous-titre. */
+const mode = (icon: string, title: string, sub: string, onclick: () => void, tone = '') =>
+  h('button', { class: `mode ${tone}`, onclick }, ico(icon), h('span', { class: 'mode-texte' }, h('strong', {}, title), h('small', {}, sub)));
 
 const monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
 
@@ -66,8 +77,15 @@ async function home(message?: string) {
   await purgeExpiredReceived();
   const { photos, lost } = await loadPhotos();
   const pending = await receivedGames();
-  screen(
-    h('header', { class: 'titre' }, h('h1', {}, 'GuessWhere'), h('p', { class: 'badge' }, 'Sur ton iPhone uniquement')),
+  const countries = new Set(photos.map((p) => p.countryName).filter(Boolean)).size;
+  const trips = tripsOf(photos).length;
+  const el = screen(
+    h('header', { class: 'titre heros' },
+      heroArt(),
+      h('div', { class: 'marque' }, logo(), h('h1', { 'aria-label': 'GuessWhere' }, h('span', { class: 'guess' }, 'Guess'), h('span', { class: 'where' }, 'Where'))),
+      h('p', { class: 'slogan' }, 'Le monde est ton terrain de jeu.', h('br'), 'Devine où ont été prises tes photos\u00a0!'),
+      h('p', { class: 'badge' }, 'Sur ton iPhone uniquement'),
+    ),
     message && h('p', { class: 'info', role: 'status' }, message),
     updateWaiting() && h('section', { class: 'bandeau' },
       h('p', {}, h('strong', {}, 'Nouvelle version disponible.'), ' Elle ne s’installe pas sans ton accord.'),
@@ -90,34 +108,45 @@ async function home(message?: string) {
       ),
       h('p', {}, 'Tes photos sont gardées seulement sur cet iPhone, dans l’app installée. Dans un simple onglet, Safari pourrait les effacer.'),
     ),
-    h('p', {}, photos.length
-      ? `${plural(photos.length, 'photo', 'photos')} prête${photos.length > 1 ? 's' : ''} à jouer.`
-      : 'Aucune photo pour l’instant. Importe des photos de voyage : seules leur position et leur date sont lues, ici même.'),
+    h('div', { class: 'horizon' }, globe()),
+    photos.length > 0 && h('div', { class: 'actions jouer-zone' },
+      h('button', { class: 'principal jouer', onclick: () => setup(photos) }, ico('▶︎'), txt('Jouer'))),
+    photos.length > 0
+      ? h('ul', { class: 'compteurs' },
+        h('li', {}, `📸 ${plural(photos.length, 'photo', 'photos')} prête${photos.length > 1 ? 's' : ''} à jouer`),
+        countries > 0 && h('li', {}, `🌍 ${plural(countries, 'pays', 'pays')}`),
+        trips > 0 && h('li', {}, `✈️ ${plural(trips, 'voyage', 'voyages')}`))
+      : h('p', { class: 'vide' }, 'Aucune photo pour l’instant. Importe des photos de voyage : seules leur position et leur date sont lues, ici même.'),
+    h('section', { class: 'modes' },
+      h('h2', {}, 'Choisis ta partie'),
+      ...pending.map((g) => mode('⏯️', `Reprendre la partie de ${g.from}`, 'Ta partie reçue t’attend', () => playReceived(g), 'orange')),
+      photos.length > 0 && mode('⚔️', 'Duel', 'À deux sur ce téléphone', () => setup(photos, true), 'orange'),
+      mode('📩', 'Jouer une partie reçue', 'Avec le fichier et le code d’un ami', () => openReceived()),
+      photos.length > 0 && mode('🗺️', 'Mes voyages', 'Tes photos rangées par voyage', () => library(photos)),
+      canImport() && importButton('Importer des photos', false, '📷', 'Seules la position et la date sont lues'),
+    ),
     h('div', { class: 'actions' },
-      photos.length > 0 && h('button', { class: 'principal', onclick: () => setup(photos) }, 'Jouer'),
-      canImport() && importButton(),
-      photos.length > 0 && h('button', { onclick: () => library(photos) }, 'Mes voyages'),
-      ...pending.map((g) => h('button', { onclick: () => playReceived(g) }, `Reprendre la partie de ${g.from}`)),
-      h('button', { onclick: () => openReceived() }, 'Jouer une partie reçue'),
-      h('button', { class: 'discret', onclick: () => settings() }, 'Réglages et confidentialité'),
+      h('button', { class: 'discret', onclick: () => settings() }, ico('⚙️'), txt('Réglages et confidentialité')),
     ),
   );
+  el.classList.add('accueil');
 }
 
 /**
  * Sélecteur de photos. Accepter explicitement le HEIC fait livrer par Safari
  * l'original (plus léger, GPS conservé) au lieu d'un JPEG converti (test iOS 18.7).
  */
-function importButton(label = 'Importer des photos', primary = false): HTMLElement {
+function importButton(label = 'Importer des photos', primary = false, icon?: string, sub?: string): HTMLElement {
   const input = h('input', { type: 'file', accept: '.heic,.heif,image/*', multiple: true, hidden: true });
   input.addEventListener('change', () => input.files?.length && runImport([...input.files]));
+  if (icon) return h('label', { class: 'bouton mode' }, ico(icon), h('span', { class: 'mode-texte' }, h('strong', {}, label), sub && h('small', {}, sub)), input);
   return h('label', { class: primary ? 'bouton principal' : 'bouton' }, label, input);
 }
 
 async function runImport(files: File[]) {
   const progress = h('progress', { max: files.length, value: 0 });
   const label = h('p', {}, `Lecture de ${plural(files.length, 'photo', 'photos')}…`);
-  screen(h('h2', {}, 'Import'), label, progress);
+  screen(h('div', { class: 'anime-import', 'aria-hidden': 'true' }, '📸'), h('h2', {}, 'Import'), label, progress);
   let ok = 0, noGps = 0, errors = 0;
   // Une photo à la fois : Safari iOS limite fortement la mémoire des canvas.
   for (const [i, f] of files.entries()) {
@@ -129,6 +158,7 @@ async function runImport(files: File[]) {
   }
   if (ok) await requestPersistence();
   screen(
+    ok > 0 && h('div', { class: 'anime-import', 'aria-hidden': 'true' }, '🎉'),
     h('h2', {}, 'Import terminé'),
     h('ul', { class: 'bilan' },
       h('li', {}, `${plural(ok, 'photo ajoutée', 'photos ajoutées')} avec leur position`),
@@ -159,7 +189,7 @@ function library(photos: Photo[]) {
 
 // ---------- Nouvelle partie ----------
 
-function setup(photos: Photo[]) {
+function setup(photos: Photo[], duelFirst = false) {
   const selections: Trip[] = [{ name: 'Toutes les photos', photos }, ...tripsOf(photos), ...countriesOf(photos)];
   const select = h('select', { id: 'selection' },
     h('option', { value: '0' }, `Toutes les photos (${nf(photos.length)})`),
@@ -168,8 +198,8 @@ function setup(photos: Photo[]) {
   );
   const p1 = h('input', { id: 'j1', value: 'Joueur 1', maxlength: 20, autocomplete: 'off' });
   const p2 = h('input', { id: 'j2', value: 'Joueur 2', maxlength: 20, autocomplete: 'off' });
-  const duel = h('input', { type: 'checkbox', id: 'duel' });
-  const p2row = h('p', { hidden: true }, h('label', { for: 'j2' }, 'Second joueur'), p2);
+  const duel = h('input', { type: 'checkbox', id: 'duel', checked: duelFirst });
+  const p2row = h('p', { hidden: !duelFirst }, h('label', { for: 'j2' }, 'Second joueur'), p2);
   duel.addEventListener('change', () => (p2row.hidden = !duel.checked));
   const rounds = h('input', { type: 'number', id: 'manches', min: 1, max: 20, value: DEFAULT_ROUNDS, inputmode: 'numeric' });
 
@@ -239,6 +269,9 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     home();
   };
   photoFrame.append(h('button', { class: 'quitter', onclick: quit, 'aria-label': 'Quitter la partie' }, '✕ Quitter'));
+  const dots = game.rounds.map(() => h('i'));
+  photoFrame.append(h('div', { class: 'pastilles', 'aria-hidden': 'true' }, ...dots));
+  const refreshDots = () => dots.forEach((d, i) => (d.className = i < game.round ? 'fait' : i === game.round ? 'encours' : ''));
 
   const turn = () => {
     const photo = byId.get(currentPhoto(game).id)!;
@@ -248,11 +281,13 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     map.clearReveal();
     map.setMarkers([]);
     map.resetView();
+    refreshDots();
+    bar.className = 'barre';
     const who = game.players.length > 1 ? `${game.players[game.player]} · ` : '';
     const validate = h('button', { class: 'principal', hidden: true, onclick: () => pending && reveal(pending) }, 'Valider');
     const hint = h('span', { class: 'consigne' }, 'Touche la carte pour placer ton repère');
     bar.replaceChildren(
-      h('span', {}, `${who}Manche ${game.round + 1}/${game.rounds.length}`),
+      h('span', { class: 'manche' }, `${who}Manche ${game.round + 1}/${game.rounds.length}`),
       hint,
       validate,
     );
@@ -274,23 +309,41 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     const gs = game.guesses[game.round];
     map.setMarkers([
       ...gs.map((g, i) => ({ ...g!, color: PLAYER_COLORS[i], label: game.players[i][0] })),
-      { ...answer, color: ANSWER_COLOR },
+      { ...answer, color: ANSWER_COLOR, target: true },
     ]);
     map.reveal(answer, gs.map((g) => g!));
     const duel = game.players.length > 1;
+    const scores = gs.map((g) => g!.score);
+    const top = Math.max(...scores);
+    const v = verdict(top);
+    const winner = scores.indexOf(top);
+    const tie = scores.filter((x) => x === top).length > 1;
+    const line = !duel ? h('p', { class: 'verdict' }, ico(v.emoji), txt(v.text))
+      : tie ? h('p', { class: 'verdict' }, ico('🤝'), txt('Égalité sur cette manche'))
+      : h('p', { class: 'verdict' }, ico('🏅'), txt(`${game.players[winner]} gagne la manche\u00a0!`));
+    bar.className = `barre revele ton-${v.tone}`;
     bar.replaceChildren(
-      h('div', { class: duel ? 'resultats duel' : 'resultats', role: 'status' }, ...gs.map((g, i) => {
-        const pin = h('span', { class: 'repere', 'aria-hidden': 'true' }, game.players[i][0]);
-        pin.style.setProperty('--c', PLAYER_COLORS[i]);
-        return h('div', { class: 'joueur' },
-          duel ? pin : h('span'),
-          h('span', { class: 'distance' }, `${duel ? game.players[i] + ' : ' : ''}${formatDistance(g!.distanceKm)}`),
-          h('span', { class: 'points' }, `${nf(g!.score)} points`),
-          h('meter', { min: 0, max: MAX_SCORE, value: g!.score, 'aria-hidden': 'true' }),
-        );
-      })),
-      h('button', { class: 'principal', onclick: next }, game.round + 1 < game.rounds.length ? 'Suivant' : 'Résultats'),
+      line,
+      h('div', { class: 'ligne-resultat' },
+        h('div', { class: duel ? 'resultats duel' : 'resultats', role: 'status' }, ...gs.map((g, i) => {
+          const pin = h('span', { class: 'repere', 'aria-hidden': 'true' }, game.players[i][0]);
+          pin.style.setProperty('--c', PLAYER_COLORS[i]);
+          // Le nombre défile à l'écran ; VoiceOver lit directement la valeur finale.
+          const shown = h('span', { 'aria-hidden': 'true' });
+          countUp(shown, g!.score, nf, 800);
+          const gauge = h('span', { class: 'jauge', 'aria-hidden': 'true' }, h('i'));
+          (gauge.firstChild as HTMLElement).style.setProperty('--p', String(g!.score / MAX_SCORE));
+          return h('div', { class: 'joueur' },
+            duel && pin,
+            h('span', { class: 'distance' }, `${duel ? game.players[i] + ' : ' : ''}${formatDistance(g!.distanceKm)}`),
+            h('span', { class: 'points' }, shown, h('span', { class: 'vh' }, nf(g!.score)), ' points'),
+            gauge,
+          );
+        })),
+        h('button', { class: 'principal', onclick: next }, game.round + 1 < game.rounds.length ? 'Suivant' : 'Résultats'),
+      ),
     );
+    if (top >= 4800) confetti(28);
   };
 
   const next = () => (advance(game) ? turn() : finish());
@@ -298,8 +351,14 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
   // Écran de passage plein écran : le joueur suivant ne voit pas le repère du précédent.
   const handOver = () => {
     advance(game);
+    const name = game.players[game.player];
+    const avatar = h('div', { class: 'avatar', 'aria-hidden': 'true' }, name[0]);
+    avatar.style.setProperty('--c', PLAYER_COLORS[game.player]);
     const cover = h('div', { class: 'passage' },
-      h('p', {}, `Passe le téléphone à ${game.players[game.player]}`),
+      avatar,
+      ico('📱'),
+      h('p', {}, `Passe le téléphone à ${name}`),
+      h('small', {}, 'Pas de triche : l’autre ne regarde pas\u00a0!'),
       h('button', { class: 'principal', onclick: () => { cover.remove(); turn(); } }, 'C’est moi, je joue'),
     );
     map.setMarkers([]);
@@ -312,19 +371,45 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     const t = totals(game);
     const max = MAX_SCORE * game.rounds.length;
     const best = Math.max(...t);
+    const duel = game.players.length > 1;
+    const alone = t.filter((x) => x === best).length === 1;
+    const n = stars(best, max);
+    const big = h('p', { class: 'grand-score', 'aria-hidden': 'true' });
+    countUp(big, best, nf, 1200);
     screen(
-      h('h2', {}, 'Fin de partie'),
-      ...game.players.map((p, i) => h('p', { class: 'total' }, `${p} : ${nf(t[i])} / ${nf(max)}`,
-        game.players.length > 1 && t[i] === best && t.filter((x) => x === best).length === 1 ? ' 🏆' : '')),
-      game.players.length > 1 && t.every((x) => x === best) && h('p', {}, 'Égalité parfaite !'),
+      h('div', { class: 'fin' },
+        h('div', { class: 'trophee', 'aria-hidden': 'true' }, duel ? (alone ? '🏆' : '🤝') : ['🧭', '🎉', '🥈', '🏆'][n]),
+        h('h2', {}, 'Fin de partie'),
+        !duel && starRow(n),
+        !duel && big,
+        ...game.players.map((p, i) => h('p', { class: 'total' }, `${p} : ${nf(t[i])} / ${nf(max)}`,
+          duel && t[i] === best && alone ? ' 🏆' : '')),
+        duel && t.every((x) => x === best) && h('p', {}, 'Égalité parfaite !'),
+        recap(game),
+      ),
       h('div', { class: 'actions' },
         h('button', { class: 'principal', onclick: () => play(newGame(pool, game.players, game.rounds.length), pool) }, 'Rejouer'),
         h('button', { onclick: () => home() }, 'Accueil'),
       ),
     );
+    if (n >= 2 || (duel && alone)) confetti();
   };
 
   map.whenReady().then(turn);
+}
+
+/** Étoiles de fin de partie (sur 3), lues « 2 étoiles sur 3 » par VoiceOver. */
+function starRow(n: number): HTMLElement {
+  return h('p', { class: 'etoiles', role: 'img', 'aria-label': `${n} étoile${n > 1 ? 's' : ''} sur 3` },
+    ...[0, 1, 2].map((i) => h('span', { class: i < n ? 'on' : '' }, '★')));
+}
+
+/** Points de chaque manche, en petites cartes. */
+function recap(game: Game): HTMLElement {
+  return h('ol', { class: 'recap' }, ...game.guesses.map((gs, r) => h('li', {},
+    h('span', {}, `Manche ${r + 1}`),
+    h('b', {}, gs.map((g) => (g ? `${verdict(g.score).emoji} ${nf(g.score)}` : '–')).join('  ·  ')),
+  )));
 }
 
 // ---------- Entre amis : mêmes photos, chacun sur son téléphone ----------
@@ -435,13 +520,25 @@ async function playReceived(record: ReceivedGame) {
     onFinish: async (g) => {
       await deleteReceivedGame(record.id);
       photoUrls.forEach((u, k) => k.startsWith(shared.id) && (URL.revokeObjectURL(u), photoUrls.delete(k)));
+      const total = totals(g)[0];
+      const max = MAX_SCORE * g.rounds.length;
+      const n = stars(total, max);
+      const big = h('p', { class: 'grand-score', 'aria-hidden': 'true' });
+      countUp(big, total, nf, 1200);
       screen(
-        h('h2', {}, 'Fin de partie'),
-        h('p', { class: 'total' }, `${record.player} : ${nf(totals(g)[0])} / ${nf(MAX_SCORE * g.rounds.length)}`),
-        h('p', {}, `Partie envoyée par ${shared.from}.`),
+        h('div', { class: 'fin' },
+          h('div', { class: 'trophee', 'aria-hidden': 'true' }, ['🧭', '🎉', '🥈', '🏆'][n]),
+          h('h2', {}, 'Fin de partie'),
+          starRow(n),
+          big,
+          h('p', { class: 'total' }, `${record.player} : ${nf(total)} / ${nf(max)}`),
+          h('p', {}, `Partie envoyée par ${shared.from}.`),
+          recap(g),
+        ),
         h('p', { class: 'badge' }, 'La partie et ses photos ont été effacées de l’app.'),
         h('div', { class: 'actions' }, h('button', { class: 'principal', onclick: () => home() }, 'Accueil')),
       );
+      if (n >= 2) confetti();
     },
   });
 }
@@ -463,6 +560,7 @@ async function settings() {
         h('li', {}, 'Tout reste dans l’app, sur ce téléphone. Rien n’est envoyé, la carte elle-même est embarquée.'),
       ),
     ),
+    themeSection(),
     satelliteSection(),
     version,
     h('div', { class: 'actions' },
@@ -473,6 +571,17 @@ async function settings() {
       h('button', { onclick: () => home() }, 'Retour'),
     ),
   );
+}
+
+/** Apparence : automatique (réglage de l'iPhone), clair ou sombre. */
+function themeSection(): HTMLElement {
+  const choices: [Theme, string][] = [['auto', 'Auto'], ['clair', '☀️ Clair'], ['sombre', '🌙 Sombre']];
+  const group = h('div', { class: 'segments', role: 'group', 'aria-label': 'Apparence' });
+  const draw = () => group.replaceChildren(...choices.map(([t, label]) =>
+    h('button', { 'aria-pressed': String(getTheme() === t), onclick: () => { setTheme(t); draw(); } }, label)));
+  draw();
+  return h('section', { class: 'texte' }, h('h3', {}, 'Apparence'), group,
+    h('p', { class: 'badge-simple' }, 'Auto suit le mode clair ou sombre de l’iPhone.'));
 }
 
 const mo = (octets: number) => `${nf(Math.round(octets / 1e6))} Mo`;
@@ -536,7 +645,7 @@ function confirmWipe(count: number, trips: number, all: boolean) {
     }
     photoUrls.forEach((u) => URL.revokeObjectURL(u));
     photoUrls.clear();
-    if (all) resetSatellite();
+    if (all) { resetSatellite(); applyTheme(); }
     const bilan = `${plural(count, 'photo', 'photos')}, ${plural(trips, 'voyage', 'voyages')}`;
     home(all ? `Tout a été supprimé (${bilan}).` : `Photos supprimées (${bilan}). La vue satellite est gardée.`);
   };
@@ -656,6 +765,8 @@ if (import.meta.env.PROD) {
   // Le bandeau de mise à jour n'apparaît qu'à l'accueil, jamais en pleine partie.
   onUpdateWaiting(() => document.querySelector('.titre') && home());
 }
+
+applyTheme();
 
 // Photos importées avant le chiffrement : chiffrées une à une avant l'accueil.
 migratePhotos().catch(() => undefined).then(() => home());
