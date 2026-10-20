@@ -67,8 +67,30 @@ try {
   page.once('dialog', (d) => d.accept());
   await page.getByRole('button', { name: 'Quitter la partie' }).click().catch(() => {});
 
+  // Supprimer les photos seulement : la vue satellite et l'app hors ligne restent.
   await page.goto('http://localhost:4193/');
   await page.getByText('Réglages et confidentialité').click();
+  await page.getByRole('button', { name: 'Supprimer les photos' }).click();
+  await page.getByText('Confirmer sans maintenir').click();
+  await page.getByText('Oui, supprimer les photos').click();
+  await page.getByText('Photos supprimées (2 photos, 2 voyages). La vue satellite est gardée.').waitFor();
+  const left = await page.evaluate(async () => ({
+    dbs: (await indexedDB.databases()).map((d) => d.name),
+    // L'accueil rouvre aussitôt une base vide : on compte ce qu'elle contient.
+    rows: await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; const t = db.transaction(['photos', 'recus', 'cles']); const n = ['photos', 'recus', 'cles'].map((s) => t.objectStore(s).count()); t.oncomplete = () => { db.close(); r(n.reduce((a, c) => a + c.result, 0)); }; }; }),
+    caches: await caches.keys(),
+    sw: (await navigator.serviceWorker.getRegistrations()).length,
+  }));
+  assert.deepEqual(left.dbs, ['guesswhere'], 'bases restantes : ' + left.dbs.join(', '));
+  assert.equal(left.rows, 0, 'photos, clés ou parties reçues restantes');
+  assert.ok(left.caches.includes('carte-satellite'), 'vue satellite gardée');
+  assert.ok(left.caches.some((k) => k.startsWith('guesswhere-')), 'app hors ligne gardée');
+  assert.equal(left.sw, 1);
+  await page.reload();
+  await page.getByText('Aucune photo').waitFor();
+  await page.getByText('Réglages et confidentialité').click();
+  await page.getByText('Vue satellite installée sur ce téléphone.').waitFor();
+
   await page.getByRole('button', { name: 'Retirer la vue satellite' }).click();
   await page.getByText('à télécharger, de préférence en Wi-Fi').waitFor();
   assert.equal((await page.evaluate(() => caches.keys())).includes('carte-satellite'), false);
