@@ -27,11 +27,15 @@ export function stars(total: number, max: number): number {
 }
 
 /** Compteur qui défile jusqu'à la valeur finale (à décorer : l'élément doit être aria-hidden). */
+let skipped = 0;
+/** Termine d'un coup les compteurs en cours (appui pour enchaîner plus vite). */
+export const skipCounters = () => { skipped = performance.now(); };
+
 export function countUp(el: HTMLElement, to: number, format: (n: number) => string, ms = 900) {
   if (calm() || to <= 0) { el.textContent = format(to); return; }
   const t0 = performance.now();
   const step = (t: number) => {
-    const k = Math.min(1, (t - t0) / ms);
+    const k = skipped >= t0 ? 1 : Math.min(1, (t - t0) / ms);
     el.textContent = format(Math.round(to * (1 - (1 - k) ** 3)));
     if (k < 1) requestAnimationFrame(step);
   };

@@ -13,7 +13,7 @@ import { acceptUpdate, CHANGES_URL, installedVersion, onUpdateWaiting, registerS
 import { h, nf, plural, screen } from './ui';
 import { globe, heroArt, logo } from './decor';
 import { applyTheme, getTheme, setTheme, type Theme } from './theme';
-import { confetti, countUp, stars, verdict } from './fun';
+import { confetti, countUp, skipCounters, stars, verdict } from './fun';
 
 const PLAYER_COLORS = ['#0A84FF', '#FF9F0A'];
 const ANSWER_COLOR = '#30D158';
@@ -38,6 +38,31 @@ function urlFor(p: Photo): string {
 /** Pictogramme décoratif devant un libellé (ignoré par VoiceOver). */
 const ico = (e: string) => h('span', { class: 'ico', 'aria-hidden': 'true' }, e);
 const txt = (t: string) => h('span', {}, t);
+
+/** Drapeau emoji du pays le plus présent dans un voyage (🌍 si inconnu). */
+function flagOf(photos: Photo[]): string {
+  const counts = new Map<string, number>();
+  for (const p of photos) if (p.countryId) counts.set(p.countryId, (counts.get(p.countryId) ?? 0) + 1);
+  const id = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+  // countryId est le code ISO alpha-2 (countries.ts) ; sinon un nom, sans drapeau.
+  return id && /^[A-Z]{2}$/.test(id) ? String.fromCodePoint(...[...id].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '🌍';
+}
+
+/** Carrousel des voyages : un appui lance une partie sur ce voyage. */
+function tripCarousel(photos: Photo[]): HTMLElement {
+  const trips = tripsOf(photos);
+  return h('section', { class: 'voyages-accueil' },
+    h('h2', {}, 'Tes voyages'),
+    h('div', { class: 'carrousel' },
+      ...trips.map((t, i) => h('button', { class: `voyage-carte teinte-${i % 4}`, onclick: () => play(newGame(t.photos, ['Joueur 1'], DEFAULT_ROUNDS), t.photos) },
+        h('span', { class: 'drapeau', 'aria-hidden': 'true' }, flagOf(t.photos)),
+        h('strong', {}, t.name),
+        h('small', {}, `${plural(t.photos.length, 'photo', 'photos')} · Jouer`),
+      )),
+      h('button', { class: 'voyage-carte tout-voir', onclick: () => library(photos) }, ico('🗺️'), h('strong', {}, 'Mes voyages'), h('small', {}, 'Tout voir')),
+    ),
+  );
+}
 
 /** Carte de mode de jeu : pictogramme, titre et sous-titre. */
 const mode = (icon: string, title: string, sub: string, onclick: () => void, tone = '') =>
@@ -82,6 +107,7 @@ async function home(message?: string) {
   const el = screen(
     h('header', { class: 'titre heros' },
       heroArt(),
+      h('button', { class: 'engrenage', onclick: () => settings() }, ico('⚙️'), h('span', { class: 'vh' }, 'Réglages et confidentialité')),
       h('div', { class: 'marque' }, logo(), h('h1', { 'aria-label': 'GuessWhere' }, h('span', { class: 'guess' }, 'Guess'), h('span', { class: 'where' }, 'Where'))),
       h('p', { class: 'slogan' }, 'Le monde est ton terrain de jeu.', h('br'), 'Devine où ont été prises tes photos\u00a0!'),
       h('p', { class: 'badge' }, 'Sur ton iPhone uniquement'),
@@ -117,16 +143,13 @@ async function home(message?: string) {
         countries > 0 && h('li', {}, `🌍 ${plural(countries, 'pays', 'pays')}`),
         trips > 0 && h('li', {}, `✈️ ${plural(trips, 'voyage', 'voyages')}`))
       : h('p', { class: 'vide' }, 'Aucune photo pour l’instant. Importe des photos de voyage : seules leur position et leur date sont lues, ici même.'),
+    photos.length > 0 && tripCarousel(photos),
     h('section', { class: 'modes' },
       h('h2', {}, 'Choisis ta partie'),
       ...pending.map((g) => mode('⏯️', `Reprendre la partie de ${g.from}`, 'Ta partie reçue t’attend', () => playReceived(g), 'orange')),
       photos.length > 0 && mode('⚔️', 'Duel', 'À deux sur ce téléphone', () => setup(photos, true), 'orange'),
       mode('📩', 'Jouer une partie reçue', 'Avec le fichier et le code d’un ami', () => openReceived()),
-      photos.length > 0 && mode('🗺️', 'Mes voyages', 'Tes photos rangées par voyage', () => library(photos)),
       canImport() && importButton('Importer des photos', false, '📷', 'Seules la position et la date sont lues'),
-    ),
-    h('div', { class: 'actions' },
-      h('button', { class: 'discret', onclick: () => settings() }, ico('⚙️'), txt('Réglages et confidentialité')),
     ),
   );
   el.classList.add('accueil');
@@ -283,6 +306,7 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
     map.resetView();
     refreshDots();
     bar.className = 'barre';
+    bar.onpointerdown = null;
     const who = game.players.length > 1 ? `${game.players[game.player]} · ` : '';
     const validate = h('button', { class: 'principal', hidden: true, onclick: () => pending && reveal(pending) }, 'Valider');
     const hint = h('span', { class: 'consigne' }, 'Touche la carte pour placer ton repère');
@@ -322,6 +346,8 @@ function play(game: Game, pool: Photo[], hooks: PlayHooks = {}) {
       : tie ? h('p', { class: 'verdict' }, ico('🤝'), txt('Égalité sur cette manche'))
       : h('p', { class: 'verdict' }, ico('🏅'), txt(`${game.players[winner]} gagne la manche\u00a0!`));
     bar.className = `barre revele ton-${v.tone}`;
+    // Un appui sur le bandeau termine tout de suite le défilement des points.
+    bar.onpointerdown = skipCounters;
     bar.replaceChildren(
       line,
       h('div', { class: 'ligne-resultat' },

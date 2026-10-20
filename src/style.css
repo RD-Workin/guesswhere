@@ -198,7 +198,7 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, #30d158, #0a84f
 
 /* Panneau « Choisis ta partie » : cartes de mode en relief. */
 .modes { margin-top: 16px; background: var(--panneau); border: 2px solid var(--panneau-bord); border-radius: 24px; padding: 6px 12px 14px; box-shadow: 0 10px 30px rgba(0, 20, 60, .25); display: grid; gap: 12px; animation: monte .45s .05s cubic-bezier(.2, .9, .3, 1.2) backwards; }
-.modes h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; text-align: center; color: var(--panneau-titre); margin: 8px 0 0; }
+.modes h2 { text-align: center; color: var(--panneau-titre); margin: 8px 0 0; }
 button.mode, .bouton.mode {
   justify-content: flex-start; text-align: left; gap: 12px; min-height: 60px; padding: 8px 14px; border-radius: 18px;
   background: linear-gradient(180deg, #1a7ff0, #0058c4); color: #fff; border: 0; box-shadow: 0 5px 0 #003f8f;
@@ -395,3 +395,37 @@ button.mode:active, .bouton.mode:active { transform: translateY(5px); box-shadow
 .masque img { width: 96px; height: 96px; border-radius: 22px; }
 .ecran.accueil { animation: none; }
 .segments button { white-space: nowrap; }
+
+/* Réglages : engrenage en haut à droite de l'accueil. */
+.heros { position: relative; }
+.engrenage {
+  position: absolute; top: 0; right: 0; z-index: 2; width: 44px; min-height: 44px; padding: 0; border-radius: 50%;
+  background: var(--panneau); border: 2px solid var(--panneau-bord); box-shadow: 0 3px 0 rgba(0,0,0,.15);
+}
+.engrenage .ico { font-size: 22px; }
+
+/* Carrousel « Tes voyages » : défilement natif, la carte suivante dépasse. */
+.voyages-accueil { margin-top: 18px; }
+.voyages-accueil h2, .modes h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 8px; }
+.voyages-accueil h2 { color: var(--ciel-texte); text-align: left; }
+.carrousel {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 72%; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
+  margin: 0 calc(-16px - env(safe-area-inset-right)) 0 calc(-16px - env(safe-area-inset-left));
+  padding: 4px calc(16px + env(safe-area-inset-right)) 12px calc(16px + env(safe-area-inset-left));
+  scroll-padding-inline: calc(16px + env(safe-area-inset-left)); scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.carrousel::-webkit-scrollbar { display: none; }
+.voyage-carte {
+  scroll-snap-align: start; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 2px; text-align: left;
+  min-height: 112px; padding: 12px 14px; border-radius: 20px; border: 0; color: #fff; line-height: 1.2;
+}
+.voyage-carte strong { font-size: 17px; }
+.voyage-carte small { font-family: -apple-system, system-ui, sans-serif; font-weight: 500; font-size: 14px; opacity: .95; }
+.voyage-carte .drapeau { font-size: 34px; line-height: 1; margin-bottom: auto; }
+.teinte-0 { background: linear-gradient(160deg, #7b3fe4, #4f2bbd); box-shadow: 0 5px 0 #33197e; }
+.teinte-1 { background: linear-gradient(160deg, #0b7d72, #075e56); box-shadow: 0 5px 0 #064a43; }
+.teinte-2 { background: linear-gradient(160deg, #c2255c, #a61e4d); box-shadow: 0 5px 0 #6e1131; }
+.teinte-3 { background: linear-gradient(160deg, #1a7ff0, #0058c4); box-shadow: 0 5px 0 #003f8f; }
+.tout-voir { background: var(--panneau); color: var(--text); border: 2px solid var(--panneau-bord); box-shadow: 0 5px 0 rgba(0,0,0,.12); }
+.tout-voir .ico { font-size: 30px; margin-bottom: auto; }
+.voyage-carte:active { transform: translateY(5px); box-shadow: none; }
