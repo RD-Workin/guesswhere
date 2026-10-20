@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
+      # Vérification des types : test:e2e compile avec vite, qui ne la fait pas.
+      - run: npx tsc --noEmit
       - run: npm test
       - run: npx playwright-core install --with-deps chromium
       - run: npm run test:e2e

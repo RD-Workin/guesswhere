@@ -77,12 +77,12 @@ try {
   const left = await page.evaluate(async () => ({
     dbs: (await indexedDB.databases()).map((d) => d.name),
     // L'accueil rouvre aussitôt une base vide : on compte ce qu'elle contient.
-    rows: await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; const t = db.transaction(['photos', 'recus']); const a = t.objectStore('photos').count(); const b = t.objectStore('recus').count(); t.oncomplete = () => { db.close(); r(a.result + b.result); }; }; }),
+    rows: await new Promise((r) => { const q = indexedDB.open('guesswhere'); q.onsuccess = () => { const db = q.result; const t = db.transaction(['photos', 'recus', 'cles']); const n = ['photos', 'recus', 'cles'].map((s) => t.objectStore(s).count()); t.oncomplete = () => { db.close(); r(n.reduce((a, c) => a + c.result, 0)); }; }; }),
     caches: await caches.keys(),
     sw: (await navigator.serviceWorker.getRegistrations()).length,
   }));
   assert.deepEqual(left.dbs, ['guesswhere'], 'bases restantes : ' + left.dbs.join(', '));
-  assert.equal(left.rows, 0, 'photos ou parties reçues restantes');
+  assert.equal(left.rows, 0, 'photos, clés ou parties reçues restantes');
   assert.ok(left.caches.includes('carte-satellite'), 'vue satellite gardée');
   assert.ok(left.caches.some((k) => k.startsWith('guesswhere-')), 'app hors ligne gardée');
   assert.equal(left.sw, 1);
